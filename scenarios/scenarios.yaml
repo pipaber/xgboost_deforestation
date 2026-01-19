@@ -1,0 +1,186 @@
+# Scenario configuration for Peru deforestation model
+# Baseline year: 2020
+#
+# Notes:
+# - Scenarios operate as deterministic transformations on the baseline feature rows.
+# - All scenarios are applied ONLY to districts where Región ∈ {SELVA, SIERRA}.
+# - Coca changes are applied ONLY where Coca_ha > 0 in the baseline year.
+# - Climate anomalies: temperature is additive (°C), precipitation is multiplicative (%).
+#
+# This file is intended to be versioned/auditable. Add citations/links under each scenario if desired.
+
+baseline:
+  year: 2020
+  region_mask:
+    include: ["SELVA", "SIERRA"]
+
+masks:
+  coca_zone:
+    description: "Apply coca adjustments only where baseline Coca_ha > 0"
+    condition:
+      column: "Coca_ha"
+      op: ">"
+      value: 0
+
+variables:
+  # Human pressure variables (hectares)
+  mineria: "Minería"
+  infraestructura: "Infraestructura"
+  agropec: "area_agropec"
+  coca: "Coca_ha"
+
+  # Climate variables
+  precip: "pp"
+  temp: "tmean"
+
+climate_anomaly_mask:
+  description: "Scale climate anomalies by Región"
+  region_multipliers:
+    # SELVA is more sensitive to rainfall anomalies
+    pp:
+      SELVA: 1.0
+      SIERRA: 0.6
+      COSTA: 0.0
+    # Temperature warming is global; small scaling differences allowed
+    tmean:
+      SELVA: 1.0
+      SIERRA: 0.9
+      COSTA: 0.8
+
+scenarios:
+  good:
+    description: >
+      Good scenario (reduced deforestation): stronger enforcement reduces illegal mining
+      and slows infrastructure and agricultural frontier expansion; coca reduces where present.
+      Climate warming continues but anomalies are mild relative to baseline.
+    citations: []
+    transforms:
+      # Human pressure (apply in SELVA+SIERRA)
+      - type: "multiply"
+        column: "Minería"
+        factor: 0.85
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "Infraestructura"
+        factor: 0.95
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "area_agropec"
+        factor: 0.97
+        apply_region_mask: true
+
+      # Coca only where Coca_ha > 0
+      - type: "multiply"
+        column: "Coca_ha"
+        factor: 0.85
+        apply_region_mask: true
+        apply_mask: "coca_zone"
+
+      # Climate anomalies (mild)
+      - type: "add"
+        column: "tmean"
+        value: 0.2
+        apply_region_mask: true
+        apply_climate_mask: true
+
+      - type: "multiply"
+        column: "pp"
+        factor: 0.99
+        apply_region_mask: true
+        apply_climate_mask: true
+
+  mild:
+    description: >
+      Mild / business-as-usual scenario: no major policy shift; gradual increases in
+      mining, infrastructure, and agricultural land. Coca increases slowly where present.
+      Climate warming and rainfall anomalies continue at moderate levels.
+    citations: []
+    transforms:
+      - type: "multiply"
+        column: "Minería"
+        factor: 1.05
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "Infraestructura"
+        factor: 1.02
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "area_agropec"
+        factor: 1.03
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "Coca_ha"
+        factor: 1.05
+        apply_region_mask: true
+        apply_mask: "coca_zone"
+
+      - type: "add"
+        column: "tmean"
+        value: 0.5
+        apply_region_mask: true
+        apply_climate_mask: true
+
+      - type: "multiply"
+        column: "pp"
+        factor: 0.97
+        apply_region_mask: true
+        apply_climate_mask: true
+
+  bad:
+    description: >
+      Bad scenario (increased deforestation): illegal mining expands, infrastructure/access grows,
+      agricultural and livestock land expands, coca increases where present, and climate anomalies
+      intensify (hotter + drier).
+    citations: []
+    transforms:
+      - type: "multiply"
+        column: "Minería"
+        factor: 1.25
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "Infraestructura"
+        factor: 1.10
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "area_agropec"
+        factor: 1.10
+        apply_region_mask: true
+
+      - type: "multiply"
+        column: "Coca_ha"
+        factor: 1.20
+        apply_region_mask: true
+        apply_mask: "coca_zone"
+
+      - type: "add"
+        column: "tmean"
+        value: 1.0
+        apply_region_mask: true
+        apply_climate_mask: true
+
+      - type: "multiply"
+        column: "pp"
+        factor: 0.90
+        apply_region_mask: true
+        apply_climate_mask: true
+
+constraints:
+  # Basic post-transform constraints to avoid invalid values
+  non_negative_columns:
+    - "Minería"
+    - "Infraestructura"
+    - "area_agropec"
+    - "Coca_ha"
+    - "pp"
+  # Optional caps (set to null to disable)
+  caps:
+    pp_min: 0.0
+    tmean_min: null
+    tmean_max: null

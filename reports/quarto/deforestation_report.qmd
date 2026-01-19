@@ -1,0 +1,450 @@
+---
+title: "Peru Deforestation Model: Data, Training, Explainability, and Scenarios"
+subtitle: "Technical report"
+author: "Pachamama Predictor"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    theme: cosmo
+    embed-resources: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{python}
+from pathlib import Path
+import json
+
+def _try_read_json(path: str):
+    p = Path(path)
+    if not p.exists():
+        return None
+    return json.loads(p.read_text(encoding="utf-8"))
+
+def _img(path: str, alt: str):
+    # Standard Markdown image syntax (Quarto-compatible)
+    # Note: keep paths relative to this .qmd file location.
+    return f"![{alt}]({path})"
+
+def _gallery(paths, base_alt: str):
+    # Emit images as plain Markdown (one per line)
+    out = []
+    for p in sorted(paths):
+        out.append(_img(p.as_posix(), f"{base_alt}: {p.name}"))
+        out.append("")  # blank line between images
+    return "\n".join(out).strip()
+
+```
+
+## Executive summary
+
+This report documents a district-level deforestation prediction pipeline for Peru, including:
+
+- the dataset used for training and inference
+- the machine learning model and why it was chosen
+- the time-aware training methodology (rolling/expanding window cross-validation)
+- model results and key diagnostics
+- SHAP-based explainability outputs
+- scenario analysis outputs and how to interpret them
+
+The codebase produces two primary reporting artifacts:
+
+1. **SHAP explainability outputs** under `reports/shap/`
+2. **Scenario analysis outputs** under `reports/scenarios/`
+
+---
+
+## Data
+
+### Data sources and files
+
+The pipeline operates over district-level (UBIGEO) observations by year.
+
+Key files in this repository:
+
+- Main dataset (imputed variants):
+  - `deforestation_dataset_PERU_imputed_coca.csv`
+  - `deforestation_dataset_PERU_imputed_coca_idh.csv`
+  - `deforestation_dataset_PERU_imputed_coca.csv` is used in the SHAP metadata for the documented run.
+
+- Data dictionary:
+  - `Data_Dictionary_deforestation_dataset_PERU.xlsx`
+
+- Administrative boundaries (for mapping):
+  - `DISTRITOS_inei_geogpsperu_suyopomalia.zip` (INEI districts / admin level 3)
+
+### Unit of analysis and identifiers
+
+- **Spatial unit:** District (admin 3)
+- **Identifier:** `UBIGEO` (Peru district code)
+- **Time index:** `YEAR`
+
+### Target variable
+
+The supervised learning target is:
+
+- `Def_ha`: deforestation in hectares
+
+During model training, the target is transformed as:
+
+- `y_train = log1p(Def_ha)`
+
+This transformation reduces skew and stabilizes variance. Predictions are transformed back to hectares as:
+
+- `Def_ha_hat = expm1(y_hat_log)`
+
+### Key feature groups (examples)
+
+The dataset includes a mixture of:
+
+- **Climate:** `pp` (precipitation), `tmean` (mean temperature)
+- **Land use / pressure:** `area_agropec`, `Infraestructura`, `Minería` (feature semantics should be interpreted via the data dictionary)
+- **Socio-demographic:** `Población`, `dens_pob` (depending on availability/years)
+- **Geographic / distances:** (some were dropped due to sparsity or design decisions)
+- **Categorical geography:**
+  - `Región` (e.g., SELVA/SIERRA)
+  - `NOMBDEP` (department)
+  - `Cluster` (cluster labels)
+
+### Preprocessing and schema decisions
+
+The training pipeline performs:
+
+- One-hot encoding for categorical columns using `get_dummies(dummy_na=True)` for:
+  - `Región`, `NOMBDEP`, `Cluster`
+- Feature name sanitization to satisfy XGBoost constraints.
+- A conservative drop list including:
+  - ID/name fields (`UBIGEO`, `NOMBPROB`, `NOMBDIST`)
+  - extremely sparse blocks (e.g., multiple employment columns)
+- Numeric missing values are not imputed during training because XGBoost can handle NaNs natively (this is consistent with the training scripts).
+
+The exact `drop_cols` and `categorical_cols` used are recorded in SHAP metadata (see [Explainability / SHAP](#explainability-shap)).
+
+---
+
+## Model
+
+### Algorithm
+
+The model is **XGBoost regression** using `XGBRegressor`.
+
+Reasons this model family is appropriate here:
+
+- strong performance on tabular data with nonlinearities and feature interactions
+- native handling of missing numeric values
+- robust learning with proper time-aware validation
+- built-in compatibility with explainability techniques such as SHAP
+
+### Objective and prediction space
+
+- Objective: squared error regression in log space
+- Train target: `log1p(Def_ha)`
+- Reported predictions: `expm1(pred_log)` in hectares
+
+This is a modeling choice that improves stability when target values are heavy-tailed.
+
+---
+
+## Training methodology (rolling/expanding window CV)
+
+### Why time-aware validation
+
+For spatiotemporal outcomes (district-year deforestation), random splits can leak temporal structure and inflate metrics. To reduce this risk, training uses a **rolling/expanding window time-series cross-validation** scheme:
+
+- Each fold trains on earlier years and validates on a later year/window.
+- Hyperparameters are selected by average cross-validated error.
+- A final holdout test window is kept separate from tuning.
+
+### Implementation reference
+
+The rolling/expanding window approach is implemented in:
+
+- `src/deforestation/train_xgb_timecv.py`
+
+Key points from the training script design:
+
+- Multiple folds across years are evaluated (example defaults include validation on 2011, 2012, 2015, 2017, 2018).
+- The final model is trained on years up to a chosen cutoff (default `<= 2018`) and tested on a final holdout window (default `2019–2020`).
+- Early stopping is used per fold (configured in the training script).
+
+### Artifacts produced
+
+Training produces a model bundle and reports under `models/...`, typically including:
+
+- `bundle.joblib` (model + feature schema + portable config)
+- `metrics_report.json` (CV + test metrics)
+- `feature_columns.json`
+- `trials_log.csv`
+
+---
+
+## Model results
+
+### Cross-validation + holdout test metrics (from training artifacts)
+
+The model training script writes its evaluation metrics to a JSON file. For the run documented in this report, the metrics are expected at:
+
+- `models/xgb_timecv_v1_gpu/metrics_report.json`
+
+```{python}
+metrics = _try_read_json("../../models/xgb_timecv_v1_gpu/metrics_report.json")
+metrics
+```
+
+If the JSON is present, below is a human-readable summary.
+
+#### CV summary (rolling/expanding window)
+```{python}
+if metrics and "cv" in metrics and "best_cv_aggregate" in metrics["cv"]:
+    cv = metrics["cv"]
+    agg = cv["best_cv_aggregate"]
+    print(f"Selection metric: {cv.get('selection_metric')}")
+    print(f"Usable folds: {cv.get('usable_folds')}")
+    print(f"Best trial: {cv.get('best_trial')}")
+    print(f"RMSE (mean ± std): {agg.get('rmse_mean'):.3f} ± {agg.get('rmse_std'):.3f}")
+    print(f"MAE  (mean ± std): {agg.get('mae_mean'):.3f} ± {agg.get('mae_std'):.3f}")
+    print(f"R²   (mean):       {agg.get('r2_mean'):.3f}")
+else:
+    print("CV metrics not found. Ensure models/xgb_timecv_v1_gpu/metrics_report.json exists.")
+```
+
+#### CV per-fold metrics
+```{python}
+if metrics and "cv" in metrics and "best_cv_per_fold" in metrics["cv"]:
+    import pandas as pd
+    pd.DataFrame(metrics["cv"]["best_cv_per_fold"])
+else:
+    print("Per-fold CV metrics not found.")
+```
+
+#### Final holdout test metrics (2019–2020 by default)
+```{python}
+if metrics and "test" in metrics and "metrics" in metrics["test"]:
+    tm = metrics["test"]["metrics"]
+    print(f"Test window: {metrics['test'].get('years')}")
+    print(f"Rows:        {metrics['test'].get('rows')}")
+    print(f"RMSE:        {tm.get('rmse'):.3f}")
+    print(f"MAE:         {tm.get('mae'):.3f}")
+    print(f"R²:          {tm.get('r2'):.3f}")
+else:
+    print("Test metrics not found.")
+```
+
+### Current scenario run summary (baseline year 2020)
+
+From `reports/scenarios/xgb_timecv_v1_gpu_baseline2020/scenario_summary.json`:
+
+```{python}
+scenario_summary = _try_read_json("../scenarios/xgb_timecv_v1_gpu_baseline2020/scenario_summary.json")
+scenario_summary
+```
+
+Interpretation notes:
+
+- `total_pred_ha` is the scenario total over baseline-year districts.
+- `total_delta_ha` is scenario minus baseline predictions (negative means predicted deforestation decreases relative to baseline).
+- These values reflect the specific scenario transformation YAML used in that run.
+
+---
+
+## Explainability (SHAP)
+
+### What SHAP is used for
+
+SHAP (SHapley Additive exPlanations) decomposes each prediction into contributions from each feature.
+
+In this project, SHAP is used to answer:
+
+- Which features are most influential overall?
+- How do feature values relate to increased/decreased predictions?
+- How do drivers vary by region/cluster or by specific districts?
+
+### Where SHAP outputs live
+
+SHAP outputs are stored under:
+
+- `reports/shap/`
+
+Example run directory (GPU time-CV run):
+
+- `reports/shap/xgb_timecv_v1_gpu/`
+
+### What files mean
+
+Typical outputs include:
+
+- `shap_summary_beeswarm.png`  
+  **How to read:** each dot is a row; x-axis is SHAP value (impact on prediction); color is feature value.
+  - dots to the right increase the prediction
+  - dots to the left decrease the prediction
+  - wide horizontal spread means high influence and heterogeneous effects
+
+- `shap_summary_bar.png`  
+  **How to read:** global importance (mean absolute SHAP value). This ranks features by average magnitude of influence, not direction.
+
+- `shap_dependence_<feature>.png`  
+  **How to read:** relationship between a feature value (x-axis) and its SHAP contribution (y-axis).
+  - reveals nonlinearity, thresholds, saturation, and interactions (if colored by another variable in the plot)
+
+- `shap_waterfall_example.png`  
+  **How to read:** for a single observation, shows how features push the prediction from a base value to the final predicted value.
+
+- `shap_mean_abs.csv` / `top_features.txt`  
+  Tabular summaries of global importance.
+
+- `shap_run_metadata.json`  
+  Reproducibility metadata (data path, separator, train_config, etc.). For the referenced run, the metadata indicates:
+  - dataset: `deforestation_dataset_PERU_imputed_coca.csv` with `;` separator
+  - categorical columns: `Región`, `NOMBDEP`, `Cluster`
+  - a drop list including ID/name fields and sparse employment blocks
+
+### SHAP figures (all images)
+
+This section includes **all** SHAP PNGs found under:
+
+- `reports/shap/xgb_timecv_v1_gpu/`
+- `reports/shap/xgb_tune_v1/`
+
+If a figure does not render, confirm the file exists and the report is rendered from `reports/quarto/`.
+
+#### SHAP: xgb_timecv_v1_gpu (all PNGs)
+
+```{python}
+#| label: shap-gallery-xgb-timecv-v1-gpu
+#| output: asis
+base = Path("../shap/xgb_timecv_v1_gpu")
+pngs = list(base.glob("*.png")) if base.exists() else []
+print(_gallery(pngs, base_alt="SHAP xgb_timecv_v1_gpu") if pngs else "No PNGs found.")
+```
+
+#### SHAP: xgb_tune_v1 (all PNGs)
+
+```{python}
+#| label: shap-gallery-xgb-tune-v1
+#| output: asis
+base = Path("../shap/xgb_tune_v1")
+pngs = list(base.glob("*.png")) if base.exists() else []
+print(_gallery(pngs, base_alt="SHAP xgb_tune_v1") if pngs else "No PNGs found.")
+```
+
+---
+
+## Scenario analysis
+
+### Purpose
+
+Scenario analysis answers *counterfactual-style* questions:
+
+> If we adjust certain drivers (e.g., infrastructure pressure, climate anomalies) according to a policy or shock scenario, how do predicted district-level deforestation outcomes change relative to baseline?
+
+### Implementation reference
+
+Scenario scoring and reporting is implemented in:
+
+- `src/deforestation/run_scenarios.py`
+
+Main steps:
+
+1. Select baseline rows for a year (default 2020).
+2. Apply configured transformations from `scenarios/scenarios.yaml`.
+3. Predict baseline and scenario deforestation in hectares.
+4. Compute per-district deltas and aggregate summaries.
+5. Save plots and CSVs.
+
+### Outputs and how to interpret them
+
+Scenario outputs (example run):
+
+- `reports/scenarios/xgb_timecv_v1_gpu_baseline2020/`
+
+Contains:
+
+- `scenario_summary.json`  
+  quick totals per scenario
+
+- `scenarios_total_pred_ha.png`  
+  bar chart of total predicted deforestation by scenario
+
+- `scenarios_total_delta_ha.png`  
+  bar chart of total delta vs baseline by scenario
+
+- Per-scenario subfolders (e.g., `good/`, `mild/`, `bad/`) containing:
+  - `*_district_results.csv` (per district: baseline, scenario, delta, pct_delta)
+  - `*_by_region.csv`, `*_by_department.csv`
+  - `*_delta_hist.png` (distribution of district deltas)
+  - `*_delta_by_region.png` (total delta by region)
+  - `*_top20_delta.png` (largest delta districts)
+  - `*_bubblemap_pred_size_delta_color.png` (map with bubbles by district)
+
+### Scenario figures (all images)
+
+This section includes **all** scenario PNGs found under:
+
+- `reports/scenarios/xgb_timecv_v1_gpu_baseline2020/`
+
+#### Scenario totals (top-level PNGs)
+
+```{python}
+#| label: scenarios-gallery-totals
+#| output: asis
+base = Path("../scenarios/xgb_timecv_v1_gpu_baseline2020")
+pngs = [p for p in base.glob("*.png")] if base.exists() else []
+print(_gallery(pngs, base_alt="Scenarios totals") if pngs else "No top-level scenario PNGs found.")
+```
+
+#### Scenario: good (all PNGs)
+
+```{python}
+#| label: scenarios-gallery-good
+#| output: asis
+base = Path("../scenarios/xgb_timecv_v1_gpu_baseline2020/good")
+pngs = list(base.glob("*.png")) if base.exists() else []
+print(_gallery(pngs, base_alt="Scenario good") if pngs else "No PNGs found for scenario 'good'.")
+```
+
+#### Scenario: mild (all PNGs)
+
+```{python}
+#| label: scenarios-gallery-mild
+#| output: asis
+base = Path("../scenarios/xgb_timecv_v1_gpu_baseline2020/mild")
+pngs = list(base.glob("*.png")) if base.exists() else []
+print(_gallery(pngs, base_alt="Scenario mild") if pngs else "No PNGs found for scenario 'mild'.")
+```
+
+#### Scenario: bad (all PNGs)
+
+```{python}
+#| label: scenarios-gallery-bad
+#| output: asis
+base = Path("../scenarios/xgb_timecv_v1_gpu_baseline2020/bad")
+pngs = list(base.glob("*.png")) if base.exists() else []
+print(_gallery(pngs, base_alt="Scenario bad") if pngs else "No PNGs found for scenario 'bad'.")
+```
+
+---
+
+## Reproducibility notes
+
+- This report references artifacts in `reports/shap/` and `reports/scenarios/`. If you move or rename those directories, update the image paths.
+- For full reproducibility, record:
+  - exact data file used (and separator)
+  - model bundle path
+  - scenario YAML file used
+  - git commit hash
+
+---
+
+## Appendix: Definitions and conventions
+
+- **Baseline year rows**: the subset of district observations with `YEAR == baseline_year` used for scenario scoring.
+- **Delta**: `scenario_pred_ha - baseline_pred_ha`.
+- **Positive delta**: predicted increase in deforestation relative to baseline.
+- **Negative delta**: predicted decrease in deforestation relative to baseline.
+- **UBIGEO**: district code used for stable joins to geometry and for reporting.

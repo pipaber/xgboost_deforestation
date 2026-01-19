@@ -1,0 +1,108 @@
+{
+  "data": {
+    "path": "deforestation_dataset_PERU_imputed_coca.csv",
+    "sep": ";"
+  },
+  "split": {
+    "train_end_year": 2016,
+    "val_start_year": 2017,
+    "val_end_year": 2018,
+    "test_start_year": 2019,
+    "test_end_year": 2020
+  },
+  "train_config": {
+    "target_col": "Def_ha",
+    "year_col": "YEAR",
+    "ubigeo_col": "UBIGEO",
+    "categorical_cols": [
+      "Región",
+      "NOMBDEP",
+      "Cluster"
+    ],
+    "drop_cols": [
+      "UBIGEO",
+      "NOMBPROB",
+      "NOMBDIST",
+      "Dist_ríos",
+      "Dist_vías",
+      "Dist_comunid",
+      "Dist_conc_mad",
+      "Emp_estado",
+      "Emp_cientificos",
+      "Emp_tecnicos",
+      "Emp_oficinistas",
+      "Emp_servicios",
+      "Emp_agricultura",
+      "Emp_obreros_minasyenerg",
+      "Emp_obreros",
+      "Emp_nocalif_agric_indust",
+      "Emp_otros",
+      "tot_salieron",
+      "tot_ingresaron"
+    ],
+    "allowlist_cols": [],
+    "random_seed": 42,
+    "n_trials": 1,
+    "early_stopping_rounds": 200,
+    "max_estimators": 5000,
+    "objective": "reg:squarederror"
+  },
+  "best": {
+    "trial": 200,
+    "val_rmse": 373.00676362974446,
+    "fit_info": {
+      "best_iteration": 706,
+      "best_score": 0.873952265636428
+    },
+    "params": {
+      "n_estimators": 5000,
+      "learning_rate": 0.06790682803763562,
+      "max_depth": 3,
+      "min_child_weight": 10.412594423600476,
+      "subsample": 0.6979567415213905,
+      "colsample_bytree": 0.6558151714100575,
+      "reg_alpha": 8.364819722541105e-08,
+      "reg_lambda": 15.146263000684451,
+      "gamma": 0.0008096527657152722,
+      "objective": "reg:squarederror",
+      "random_state": 42,
+      "tree_method": "hist",
+      "n_jobs": 8
+    },
+    "metrics": {
+      "train": {
+        "mae": 84.12217341788434,
+        "rmse": 225.5428713615756,
+        "r2": 0.8764430375313469
+      },
+      "val": {
+        "mae": 182.09891022741007,
+        "rmse": 373.00676362974446,
+        "r2": 0.7539156153426896
+      },
+      "test": {
+        "mae": 219.84310324146549,
+        "rmse": 508.13030065344145,
+        "r2": 0.7172714971911145
+      },
+      "train_nonzero": {
+        "mae": 86.37914918060964,
+        "rmse": 228.57228553230496,
+        "r2": 0.8756420008846425,
+        "n": 6138.0
+      },
+      "val_nonzero": {
+        "mae": 183.68045420288175,
+        "rmse": 374.67392202676746,
+        "r2": 0.7533086797639782,
+        "n": 781.0
+      },
+      "test_nonzero": {
+        "mae": 224.86443543673101,
+        "rmse": 514.0340615714272,
+        "r2": 0.7158237176864148,
+        "n": 770.0
+      }
+    }
+  }
+}

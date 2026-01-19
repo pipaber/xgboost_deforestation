@@ -1,0 +1,196 @@
+Imputation vs. XGBoost Native Missing-Value Handling (Deforestation PERU Dataset)
+===============================================================================
+
+Context
+-------
+You are modeling a district-year panel (UBIGEO × YEAR, 2001–2020) with target:
+
+- Def_ha: annual deforested area in hectares (continuous, non-negative, right-skewed)
+
+The dataset contains many columns with moderate to extreme missingness, including
+some feature blocks with ~90–95% missing values. This makes missing-data strategy
+a core design decision, not a minor preprocessing step.
+
+This note discusses:
+1) When interpolation is scientifically defensible and useful
+2) When interpolation is risky or misleading
+3) How XGBoost can train directly with NaN values
+4) Recommended approach for a strong, low-risk v1 model
+
+
+1) Interpolation: what it is and when it makes sense
+----------------------------------------------------
+Interpolation is a time-series imputation method that estimates missing values
+between known observations. In this project, it typically means:
+
+- within each UBIGEO (district),
+- sorted by YEAR,
+- fill missing points using linear interpolation across time,
+- optionally fill remaining edge gaps using group medians (e.g., by NOMBDEP/Cluster).
+
+Interpolation is best used when ALL of the following are true:
+
+A) The variable is continuous and slowly varying across years.
+B) Missingness is intermittent (gaps inside an observed time series).
+C) You have enough observed points per UBIGEO to define a trend.
+D) The variable is conceptually well-defined at annual resolution.
+
+Examples that are often reasonable candidates (when missingness is modest):
+- Población (population)
+- Pbi_dist (district GDP / economic measure)
+- dens_pob (population density)
+
+Why this can be scientifically plausible:
+- Demographic and many economic indicators usually evolve smoothly year-to-year.
+- Interpolating between two adjacent observed years may be a reasonable estimate.
+- It reduces information loss, especially with time-based train/test splits.
+
+
+2) Interpolation: where it becomes risky
+---------------------------------------
+Interpolation can be harmful when the variable is not smooth or not truly annual,
+or when missingness is “structural” (not measured for many districts/years).
+
+Common risk patterns in this dataset:
+
+A) Very high missingness (e.g., ~70–95% missing):
+   - With sparse coverage, interpolation becomes guesswork and may inject false trends.
+
+B) Non-annual reporting or survey-based indicators:
+   - Variables like Pobreza (poverty) and IDH (HDI) are often produced through periodic
+     surveys or multi-year estimates; “missing” may mean “not measured this year,” not
+     “unknown continuous annual signal.” Linear interpolation can create artificial
+     year-to-year changes that were never observed.
+
+C) Variables with threshold/event behavior:
+   - Some metrics can jump due to policy changes, shocks, measurement revisions, etc.
+     Interpolation would smooth these jumps away, potentially erasing real effects.
+
+D) Variables where missing could mean “not applicable” vs “unknown”:
+   - For crop-area variables (e.g., Coca_ha, Yuca_ha), missing does not safely imply zero.
+     Interpolation may also be inappropriate if reporting is sporadic or spatially partial.
+
+E) Distance-like features with extreme missingness:
+   - Dist_ríos, Dist_vías, Dist_comunid, Dist_conc_mad show ~95% missingness. Distances
+     are often static by geography, so missingness of this magnitude suggests the fields
+     were not computed for most rows or were included only for a subset. Interpolation
+     is not meaningful here; the right “fix” is usually upstream data completion or
+     excluding these columns in v1.
+
+Practical conclusion:
+- Interpolate only the “Tier 1” variables with modest missingness and strong physical
+  or administrative continuity across time.
+- Avoid interpolating extremely sparse columns and survey-like indicators without
+  validating their update frequency and definition in the data dictionary.
+
+
+3) XGBoost and missing values (NaN): what it can do
+---------------------------------------------------
+XGBoost (tree boosting) can handle missing values natively for numeric features.
+
+How:
+- When evaluating a split (feature < threshold), XGBoost learns a default direction
+  for rows where that feature is missing. In effect, “missingness” becomes part of the
+  learned decision rule.
+
+This means that for numeric columns:
+- You can pass NaN directly to XGBoost without imputation.
+- The model can learn useful patterns such as:
+  “If Coca_ha is missing, follow branch A; otherwise branch B.”
+
+Benefits:
+- Minimal preprocessing complexity for numeric missingness.
+- No risk of injecting artificial trends from imputation.
+- Often strong baseline performance on tabular data.
+
+Caveats (important):
+A) Categorical/string columns still require preprocessing.
+   - XGBoost does not accept raw strings. Columns like Región, NOMBDEP, etc. must be
+     encoded (e.g., one-hot or ordinal encoding) before training, unless using a
+     specialized categorical-capable setup (which you should not assume by default).
+
+B) Missingness can be “measurement bias,” not “signal.”
+   - If a feature is missing mostly in certain regions or years, XGBoost may learn
+     to exploit missingness patterns that do not generalize out-of-sample (especially
+     if future data collection improves or changes).
+
+C) Extremely sparse features (~90–95% missing) can be misleading.
+   - With such sparsity, the most predictive aspect may become “is missing,” which can
+     overfit or encode dataset quirks. Consider excluding these features in v1.
+
+D) You still must prevent time leakage.
+   - Native missing handling does not solve leakage. Use time-based splits and careful
+     feature engineering (especially lag features) to ensure you’re predicting future-like
+     conditions.
+
+E) Target distribution still matters.
+   - Def_ha is skewed. Even with XGBoost, training on log1p(Def_ha) often improves stability
+     and reduces domination by extreme deforestation events.
+
+
+4) Recommended approach for this dataset (v1)
+---------------------------------------------
+Given the dataset’s missingness profile, a strong engineering approach is:
+
+Step 1: Start with an XGBoost baseline using NaN as-is (numeric features)
+- Do not impute by default.
+- Drop only the most problematic columns (e.g., ~90–95% missing feature blocks) unless you
+  have a scientific reason to keep them.
+- Encode categorical columns (e.g., one-hot for Región/Cluster/NOMBDEP).
+- Use log1p(Def_ha) as the training target.
+
+Why this is a good v1:
+- It avoids “inventing data” via heavy imputation.
+- It leverages XGBoost’s strength on sparse, heterogeneous tabular datasets.
+- It provides a realistic baseline for whether more complex imputation helps.
+
+Step 2: Add controlled imputation only where it is clearly justified
+- Interpolate within UBIGEO for slow-moving indicators with modest missingness:
+  - Población, Pbi_dist, dens_pob (typical candidates)
+- Add missingness flags (e.g., Pbi_dist_was_missing) to preserve missingness information.
+- Re-evaluate performance on a time-based validation/test split.
+
+Step 3: Consider model-based imputation or external data (v2+)
+- For survey-like or highly missing indicators (IDH, Pobreza, Efic_gasto, hum_suelo),
+  prefer:
+  - model-based imputation with clear provenance and flags, or
+  - external authoritative sources (INEI, remote sensing, reanalysis products).
+- Do not fill values from “news text” directly; instead, add curated event/indicator features
+  (commodity prices, ENSO indices, major policy/enforcement changes) merged by YEAR and
+  optionally by Región.
+
+
+5) Practical decision rules (quick checklist)
+---------------------------------------------
+Use interpolation if:
+- missingness is moderate and mostly internal gaps within UBIGEO time series, AND
+- the variable is continuous and slow-moving, AND
+- you can justify annual continuity scientifically.
+
+Avoid interpolation if:
+- missingness is extreme (~70%+), OR
+- the variable is survey/periodic, OR
+- coverage is structurally partial (only some districts/years), OR
+- the variable has event-like jumps.
+
+Use XGBoost with NaN (recommended baseline) if:
+- you want a strong v1 with minimal assumptions,
+- you will encode categoricals properly,
+- you will validate using time-based splits,
+- you will monitor whether “missingness patterns” dominate feature importance.
+
+
+6) Summary recommendation
+-------------------------
+For this dataset, the recommended path is:
+
+- Train an XGBoost regression model using NaN values directly for numeric columns,
+  with proper categorical encoding and time-based validation.
+- Only interpolate a small subset of slow-moving socioeconomic variables with modest
+  missingness (e.g., Población, Pbi_dist, dens_pob), and always include imputation flags.
+- Exclude or defer extremely sparse feature blocks (~90–95% missing) until their data
+  generation and coverage are validated.
+
+This strategy is robust, scientifically cautious, and engineering-efficient: it gets
+you a strong predictive baseline first, then adds imputation only where it demonstrably
+improves generalization.

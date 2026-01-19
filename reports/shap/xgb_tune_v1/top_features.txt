@@ -1,0 +1,15 @@
+Cluster_1
+form_boscosa
+YEAR
+area_agropec
+pp
+Cluster_4
+Dist_ANP
+Coca_ha
+tmean
+NOMBDEP_SAN_MARTIN
+dens_pob
+Región_SELVA
+Población
+Dist_cat_Min
+Infraestructura

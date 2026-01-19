@@ -1,0 +1,119 @@
+# --------------------------------------------
+# Python / virtualenv
+# --------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.pytype/
+.pyre/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --------------------------------------------
+# Quarto
+# --------------------------------------------
+# Quarto render cache / intermediates
+.quarto/
+# Rendered site/project outputs (keep source .qmd tracked)
+_site/
+# Project-level cache
+_cache/
+
+# Quarto outputs created next to .qmd
+# (keeps HTML out of git; you can commit it if you want by removing these)
+reports/quarto/*.html
+reports/quarto/*_files/
+reports/quarto/*_cache/
+reports/quarto/*.quarto_ipynb
+
+# --------------------------------------------
+# Model / experiment artifacts
+# --------------------------------------------
+# Keep the trained model artifacts? (You said you may publish them)
+# If you decide to NOT commit model binaries, uncomment these:
+# models/**/bundle.joblib
+# models/**/model.json
+# models/**/feature_columns.json
+# models/**/metrics_report.json
+# models/**/trials_log.csv
+# models/**/test_predictions.csv
+
+# Always ignore temporary / scratch outputs
+*.log
+*.tmp
+
+# --------------------------------------------
+# Reports / figures
+# --------------------------------------------
+# You want to upload images and results; keep them tracked by default.
+# If you later decide they are too noisy, you can ignore whole reports:
+# reports/**
+
+# --------------------------------------------
+# Data
+# --------------------------------------------
+# Data files are often large/sensitive. Your current CSVs are small (~1–2MB),
+# but keep a rule for future large raw dumps. Track intentionally.
+# If you want to keep the current dataset CSVs in git, leave this commented.
+# *.csv
+
+# Excel/large binaries: ignore by default (can be added via Git LFS if needed)
+*.xlsx
+
+# PDFs: ignore by default (can be added via Git LFS if needed)
+*.pdf
+
+# Shapefile bundles and other large geodata: ignore by default
+*.zip
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.sbn
+*.sbx
+
+# If you DO want to track the specific Peru districts ZIP, unignore it:
+# (Default: ignored to keep repo size manageable. Consider Git LFS if you need it in-repo.)
+# !DISTRITOS_inei_geogpsperu_suyopomalia.zip
+
+# If you DO want to track the data dictionary, unignore it:
+!Data_Dictionary_deforestation_dataset_PERU.xlsx
+
+# If you DO want to track specific PDFs, unignore them:
+# !AgriLAC ResilienteTechnical Report_Modelling.pdf
+
+# --------------------------------------------
+# Locks
+# --------------------------------------------
+# Keep lock files tracked for reproducibility (uv.lock)
+# (no ignores here)
