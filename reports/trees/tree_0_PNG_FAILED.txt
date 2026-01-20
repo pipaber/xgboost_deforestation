@@ -1,0 +1,6 @@
+Graphviz PNG render skipped because `dot` was not found on PATH.
+dot not found on PATH
+
+Install Graphviz and ensure `dot` is on PATH.
+Ubuntu/Debian: sudo apt-get install graphviz
+Conda: conda install -c conda-forge graphviz python-graphviz

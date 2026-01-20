@@ -8,6 +8,7 @@ dependencies = [
     "cmocean>=4.0.3",
     "fiona>=1.10.1",
     "geopandas>=1.1.2",
+    "graphviz>=0.21",
     "ipykernel>=7.1.0",
     "joblib>=1.5.3",
     "jupyter>=1.1.1",

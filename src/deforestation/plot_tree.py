@@ -1,0 +1,171 @@
+"""
+Plot/export a representative XGBoost tree from a trained model.
+
+Outputs:
+- reports/trees/tree_<index>.png  (if graphviz is available)
+- reports/trees/tree_<index>.txt  (always)
+- reports/trees/tree_<index>_PNG_FAILED.txt (if PNG render fails; includes actionable diagnostics)
+
+Usage:
+  uv run python src/deforestation/plot_tree.py --bundle models/xgb_timecv_v1_gpu/bundle.joblib --tree 0 --out reports/trees
+
+Notes:
+- XGBoost models are ensembles with many trees. Plotting all trees is not useful.
+- This exports a single tree (default tree 0). You can choose others with --tree.
+- PNG rendering requires Graphviz installed and the `dot` executable available on PATH.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import sys
+import traceback
+from pathlib import Path
+
+import joblib
+
+
+def ensure_dir(p: Path) -> None:
+    p.mkdir(parents=True, exist_ok=True)
+
+
+def _graphviz_dot_available() -> tuple[bool, str]:
+    """
+    Returns (ok, details). `ok` is True if `dot` is available on PATH.
+    """
+    dot = shutil.which("dot")
+    if dot:
+        return True, f"dot found at: {dot}"
+    return False, "dot not found on PATH"
+
+
+def _print_debug(title: str, msg: str, enabled: bool) -> None:
+    if not enabled:
+        return
+    print(f"[DEBUG] {title}: {msg}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bundle", required=True, help="Path to bundle.joblib")
+    ap.add_argument("--tree", type=int, default=0, help="Which tree index to export")
+    ap.add_argument("--out", required=True, help="Output directory (e.g., reports/trees)")
+    ap.add_argument(
+        "--format",
+        default="png",
+        choices=["png"],
+        help="Output image format (currently only png).",
+    )
+    ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print additional debug info to help diagnose graphviz/PNG failures.",
+    )
+    args = ap.parse_args()
+
+    verbose = bool(args.verbose) or (os.environ.get("PLOT_TREE_VERBOSE", "").strip() not in ("", "0", "false", "False"))
+
+    out_dir = Path(args.out)
+    ensure_dir(out_dir)
+
+    _print_debug("bundle", args.bundle, verbose)
+    _print_debug("tree_idx", str(args.tree), verbose)
+    _print_debug("out_dir", str(out_dir), verbose)
+    _print_debug("python", sys.version.replace("\n", " "), verbose)
+    _print_debug("executable", sys.executable, verbose)
+
+    bundle = joblib.load(args.bundle)
+    if not isinstance(bundle, dict) or "model" not in bundle:
+        raise KeyError(
+            "Bundle does not look like the expected dict with key 'model'. "
+            f"Got type={type(bundle)!r}, keys={list(bundle.keys()) if isinstance(bundle, dict) else 'N/A'}"
+        )
+
+    model = bundle["model"]
+
+    if not hasattr(model, "get_booster"):
+        raise TypeError(
+            "Loaded bundle['model'] does not have get_booster(). "
+            "Expected an XGBoost sklearn estimator (e.g., xgboost.XGBClassifier/XGBRegressor). "
+            f"Got type={type(model)!r}"
+        )
+
+    _print_debug("model_type", repr(type(model)), verbose)
+
+    booster = model.get_booster()
+
+    tree_idx = int(args.tree)
+
+    # 1) Always: dump as text
+    dump = booster.get_dump(with_stats=True)
+    _print_debug("num_trees_in_model", str(len(dump)), verbose)
+    if tree_idx < 0 or tree_idx >= len(dump):
+        raise ValueError(f"--tree out of range. Got {tree_idx}, but model has {len(dump)} trees.")
+
+    txt_path = out_dir / f"tree_{tree_idx}.txt"
+    txt_path.write_text(dump[tree_idx], encoding="utf-8")
+    print(f"[OK] wrote {txt_path}")
+
+    # 2) Try: render as PNG (requires python `graphviz` + system graphviz `dot`)
+    ok_dot, dot_details = _graphviz_dot_available()
+    _print_debug("dot_check", dot_details, verbose)
+    if not ok_dot:
+        err_path = out_dir / f"tree_{tree_idx}_PNG_FAILED.txt"
+        err_path.write_text(
+            "Graphviz PNG render skipped because `dot` was not found on PATH.\n"
+            f"{dot_details}\n\n"
+            "Install Graphviz and ensure `dot` is on PATH.\n"
+            "Ubuntu/Debian: sudo apt-get install graphviz\n"
+            "Conda: conda install -c conda-forge graphviz python-graphviz\n",
+            encoding="utf-8",
+        )
+        print(f"[WARN] Could not render PNG. Wrote {err_path}")
+        if verbose:
+            print(f"[DEBUG] PNG failure details saved in: {err_path}")
+        return 0
+
+    try:
+        import xgboost as xgb
+
+        _print_debug("xgboost_version", getattr(xgb, "__version__", "unknown"), verbose)
+
+        # `num_trees` is deprecated in recent XGBoost; use `tree_idx`.
+        _print_debug("to_graphviz", f"tree_idx={tree_idx}", verbose)
+        g = xgb.to_graphviz(booster, tree_idx=tree_idx)
+
+        png_path = out_dir / f"tree_{tree_idx}.png"
+        render_base = str(png_path.with_suffix(""))
+        _print_debug("graphviz_render", f"filename={render_base} format={args.format} cleanup=True", verbose)
+
+        # graphviz renders based on filename without suffix; `.render(..., format='png')` adds `.png`
+        result_path = g.render(filename=render_base, format=args.format, cleanup=True)
+        _print_debug("graphviz_render_result", str(result_path), verbose)
+
+        print(f"[OK] wrote {png_path}")
+    except Exception:
+        err_path = out_dir / f"tree_{tree_idx}_PNG_FAILED.txt"
+        tb = traceback.format_exc()
+
+        err_path.write_text(
+            "Failed to render tree to PNG via graphviz.\n\n"
+            f"Python: {sys.version}\n"
+            f"Executable: {sys.executable}\n"
+            f"dot: {dot_details}\n"
+            f"PATH: {os.environ.get('PATH', '')}\n\n"
+            "Traceback:\n"
+            f"{tb}",
+            encoding="utf-8",
+        )
+        print(f"[WARN] Could not render PNG. Wrote {err_path}")
+        if verbose:
+            print("[DEBUG] Render exception traceback follows:")
+            print(tb)
+            print(f"[DEBUG] PNG failure details saved in: {err_path}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

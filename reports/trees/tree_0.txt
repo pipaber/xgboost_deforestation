@@ -1,0 +1,55 @@
+0:[form_boscosa<21760.0098] yes=1,no=2,missing=2,gain=13827.0859,cover=5705
+1:[Región_SELVA] yes=3,no=4,gain=1786.3125,cover=2803
+		3:[form_boscosa<6218.05176] yes=7,no=8,missing=8,gain=594.507812,cover=1324
+			7:[form_boscosa<2860.3855] yes=15,no=16,missing=16,gain=66.6206055,cover=764
+				15:leaf=-0.269598931,cover=372
+				16:[Río_lago_u_océano<1.70756996] yes=31,no=32,missing=32,gain=77.9272461,cover=392
+					31:leaf=-0.175166503,cover=189
+					32:leaf=-0.252764016,cover=203
+			8:[tmean<14.4464703] yes=17,no=18,missing=18,gain=67.9072266,cover=560
+				17:[form_boscosa<9602.50098] yes=33,no=34,missing=34,gain=24.6417236,cover=306
+					33:leaf=-0.187375218,cover=131
+					34:leaf=-0.135128886,cover=175
+				18:[Dist_ANP<39954.0117] yes=35,no=36,missing=36,gain=71.9880371,cover=254
+					35:leaf=-0.0512579679,cover=114
+					36:leaf=-0.13876465,cover=140
+4:[Cluster_4] yes=9,no=10,gain=911.379456,cover=1479
+			9:[form_boscosa<1755.50415] yes=19,no=20,missing=20,gain=367.114014,cover=1345
+				19:[Dist_ANP<9171.95996] yes=37,no=38,missing=38,gain=50.871582,cover=250
+					37:leaf=-0.0872033015,cover=41
+					38:leaf=-0.191652402,cover=209
+				20:[pp<785.130981] yes=39,no=40,missing=40,gain=379.196167,cover=1095
+					39:leaf=-0.15887782,cover=229
+					40:leaf=-0.0421789847,cover=866
+			10:[dens_pob<13.10394] yes=21,no=22,missing=22,gain=6.95010376,cover=134
+				21:leaf=0.16997245,cover=35
+				22:[dens_pob<20.5351009] yes=41,no=42,missing=42,gain=0.552947998,cover=99
+					41:leaf=0.0739666671,cover=13
+					42:leaf=0.12112321,cover=86
+	2:[tmean<20.1132202] yes=5,no=6,missing=6,gain=1573.93652,cover=2902
+		5:[form_boscosa<46928.4297] yes=11,no=12,missing=12,gain=343.189148,cover=825
+			11:[dens_pob<12.3850803] yes=23,no=24,missing=23,gain=76.1030807,cover=388
+				23:[dens_pob<9.03117943] yes=43,no=44,missing=44,gain=45.6867371,cover=248
+					43:leaf=-0.0175911449,cover=122
+					44:leaf=-0.0870392099,cover=126
+				24:[form_boscosa<30353.9395] yes=45,no=46,missing=46,gain=11.1244173,cover=140
+					45:leaf=-0.0171348006,cover=36
+					46:leaf=0.034177579,cover=104
+12:[Cluster_4] yes=25,no=26,gain=96.8222351,cover=437
+				25:[form_boscosa<242421.203] yes=47,no=48,missing=48,gain=141.645844,cover=251
+					47:leaf=0.025614379,cover=231
+					48:leaf=0.241163179,cover=20
+				26:[dens_pob<22.1745605] yes=49,no=50,missing=49,gain=11.2791443,cover=186
+					49:leaf=0.125881866,cover=178
+					50:leaf=0.0220125187,cover=8
+6:[Cluster_5] yes=13,no=14,gain=468.200195,cover=2077
+			13:[pp<931.94989] yes=27,no=28,missing=28,gain=323.478027,cover=1738
+				27:[Población<17340] yes=51,no=52,missing=52,gain=39.3163986,cover=34
+					51:leaf=-0.194226563,cover=14
+					52:leaf=-0.0215654764,cover=20
+				28:[Pbi_dist<7138493] yes=53,no=54,missing=53,gain=239.805664,cover=1704
+					53:leaf=0.104897112,cover=568
+					54:leaf=0.169932961,cover=1136
+			14:[YEAR<2008] yes=29,no=30,missing=30,gain=11.1152344,cover=339
+				29:leaf=0.219263896,cover=143
+				30:leaf=0.266382754,cover=196
