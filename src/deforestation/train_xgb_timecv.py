@@ -88,7 +88,6 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from xgboost import XGBRegressor
 
-
 # -----------------------------
 # Config
 # -----------------------------
@@ -100,7 +99,7 @@ class FeatureConfig:
     year_col: str = "YEAR"
     ubigeo_col: str = "UBIGEO"
 
-    categorical_cols: Tuple[str, ...] = ("Región", "NOMBDEP", "Cluster")
+    categorical_cols: Tuple[str, ...] = ("Región", "NOMBDEP")
 
     # Conservative drop list (IDs + extreme sparse blocks)
     drop_cols: Tuple[str, ...] = (
@@ -123,6 +122,7 @@ class FeatureConfig:
         "Emp_otros",
         "tot_salieron",
         "tot_ingresaron",
+        "Cluster",
     )
 
     # Optional: keep only specific columns (rarely used; empty means "all except drops")
@@ -253,19 +253,27 @@ def load_dataset(path: str, sep: str) -> pd.DataFrame:
     df["YEAR"] = pd.to_numeric(df["YEAR"], errors="coerce")
     if df["YEAR"].isna().any():
         bad = df[df["YEAR"].isna()].head(10)
-        raise ValueError(f"Found non-numeric YEAR values. Example rows:\n{bad.to_string(index=False)}")
+        raise ValueError(
+            f"Found non-numeric YEAR values. Example rows:\n{bad.to_string(index=False)}"
+        )
     df["YEAR"] = df["YEAR"].astype(int)
     return df
 
 
-def select_features(df: pd.DataFrame, feat_cfg: FeatureConfig) -> Tuple[pd.DataFrame, pd.Series]:
+def select_features(
+    df: pd.DataFrame, feat_cfg: FeatureConfig
+) -> Tuple[pd.DataFrame, pd.Series]:
     if feat_cfg.target_col not in df.columns:
         raise ValueError(f"Target column '{feat_cfg.target_col}' not found.")
     y = df[feat_cfg.target_col].astype(float)
     X = df.drop(columns=[feat_cfg.target_col])
 
     if feat_cfg.allowlist_cols:
-        keep = set(feat_cfg.allowlist_cols) | {feat_cfg.year_col} | set(feat_cfg.categorical_cols)
+        keep = (
+            set(feat_cfg.allowlist_cols)
+            | {feat_cfg.year_col}
+            | set(feat_cfg.categorical_cols)
+        )
         X = X[[c for c in X.columns if c in keep]].copy()
 
     drops = [c for c in feat_cfg.drop_cols if c in X.columns]
@@ -295,12 +303,22 @@ def one_hot_encode_splits(
         if c in X_val.columns:
             X_val[c] = X_val[c].astype("string")
 
-    all_X = pd.concat([X_train.assign(_split="train"), X_val.assign(_split="val")], ignore_index=True)
+    all_X = pd.concat(
+        [X_train.assign(_split="train"), X_val.assign(_split="val")], ignore_index=True
+    )
     cats = [c for c in categorical_cols if c in all_X.columns]
     all_enc = pd.get_dummies(all_X, columns=cats, dummy_na=True)
 
-    tr = all_enc[all_enc["_split"] == "train"].drop(columns=["_split"]).reset_index(drop=True)
-    va = all_enc[all_enc["_split"] == "val"].drop(columns=["_split"]).reset_index(drop=True)
+    tr = (
+        all_enc[all_enc["_split"] == "train"]
+        .drop(columns=["_split"])
+        .reset_index(drop=True)
+    )
+    va = (
+        all_enc[all_enc["_split"] == "val"]
+        .drop(columns=["_split"])
+        .reset_index(drop=True)
+    )
 
     new_cols = sanitize_feature_names(list(tr.columns))
     tr.columns = new_cols
@@ -314,7 +332,9 @@ def one_hot_encode_splits(
 # -----------------------------
 
 
-def sample_params(rng: random.Random, tune_cfg: TuneConfig, device: str) -> Dict[str, Any]:
+def sample_params(
+    rng: random.Random, tune_cfg: TuneConfig, device: str
+) -> Dict[str, Any]:
     def log_uniform(a: float, b: float) -> float:
         return float(math.exp(rng.uniform(math.log(a), math.log(b))))
 
@@ -358,7 +378,9 @@ def fit_one_fold(
     return model
 
 
-def score_fold_original_space(model: XGBRegressor, X_val: pd.DataFrame, y_val: np.ndarray) -> Dict[str, float]:
+def score_fold_original_space(
+    model: XGBRegressor, X_val: pd.DataFrame, y_val: np.ndarray
+) -> Dict[str, float]:
     pred_val = _safe_expm1(model.predict(X_val))
     return {
         "rmse": _rmse(y_val, pred_val),
@@ -373,9 +395,11 @@ def score_fold_original_space(model: XGBRegressor, X_val: pd.DataFrame, y_val: n
 # -----------------------------
 
 
-def iter_folds(df: pd.DataFrame, cv_cfg: CVConfig, year_col: str) -> List[Dict[str, Any]]:
+def iter_folds(
+    df: pd.DataFrame, cv_cfg: CVConfig, year_col: str
+) -> List[Dict[str, Any]]:
     folds_out: List[Dict[str, Any]] = []
-    for (train_end, val_start, val_end) in cv_cfg.folds:
+    for train_end, val_start, val_end in cv_cfg.folds:
         train_df = df[df[year_col] <= train_end].copy()
         val_df = df[(df[year_col] >= val_start) & (df[year_col] <= val_end)].copy()
         if train_df.empty or val_df.empty:
@@ -409,7 +433,12 @@ def iter_folds(df: pd.DataFrame, cv_cfg: CVConfig, year_col: str) -> List[Dict[s
 def aggregate_cv_scores(per_fold: List[Dict[str, float]]) -> Dict[str, float]:
     # Average only across non-empty folds
     if not per_fold:
-        return {"rmse_mean": float("inf"), "mae_mean": float("inf"), "r2_mean": float("nan"), "folds": 0.0}
+        return {
+            "rmse_mean": float("inf"),
+            "mae_mean": float("inf"),
+            "r2_mean": float("nan"),
+            "folds": 0.0,
+        }
 
     rmse_vals = [f["rmse"] for f in per_fold]
     mae_vals = [f["mae"] for f in per_fold]
@@ -431,18 +460,40 @@ def aggregate_cv_scores(per_fold: List[Dict[str, float]]) -> Dict[str, float]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Tune XGBoost using rolling time-series CV, then train final model and evaluate on holdout test.")
+    ap = argparse.ArgumentParser(
+        description="Tune XGBoost using rolling time-series CV, then train final model and evaluate on holdout test."
+    )
     ap.add_argument("--data", required=True, help="Path to dataset CSV.")
     ap.add_argument("--sep", required=True, help="Separator, e.g. ';' or '\\t'.")
     ap.add_argument("--outdir", default="models", help="Base output directory.")
-    ap.add_argument("--run-name", default=None, help="Optional run directory name. If exists, append to trials_log.csv.")
-    ap.add_argument("--trials", type=int, default=200, help="Number of random-search trials.")
+    ap.add_argument(
+        "--run-name",
+        default=None,
+        help="Optional run directory name. If exists, append to trials_log.csv.",
+    )
+    ap.add_argument(
+        "--trials", type=int, default=200, help="Number of random-search trials."
+    )
     ap.add_argument("--seed", type=int, default=42, help="Random seed.")
-    ap.add_argument("--selection-metric", choices=["rmse", "mae"], default="rmse", help="Metric to minimize for selecting best params.")
-    ap.add_argument("--final-train-end", type=int, default=2018, help="Final train end year for the production model.")
+    ap.add_argument(
+        "--selection-metric",
+        choices=["rmse", "mae"],
+        default="rmse",
+        help="Metric to minimize for selecting best params.",
+    )
+    ap.add_argument(
+        "--final-train-end",
+        type=int,
+        default=2018,
+        help="Final train end year for the production model.",
+    )
     ap.add_argument("--test-start", type=int, default=2019, help="Test start year.")
     ap.add_argument("--test-end", type=int, default=2020, help="Test end year.")
-    ap.add_argument("--sample-folds", default=None, help="Optional override folds: 'trainEnd:valStart-valEnd,...' e.g. '2010:2011-2011,2014:2015-2015'")
+    ap.add_argument(
+        "--sample-folds",
+        default=None,
+        help="Optional override folds: 'trainEnd:valStart-valEnd,...' e.g. '2010:2011-2011,2014:2015-2015'",
+    )
     ap.add_argument(
         "--device",
         choices=["cpu", "cuda"],
@@ -452,10 +503,18 @@ def main() -> int:
     args = ap.parse_args()
 
     feat_cfg = FeatureConfig()
-    tune_cfg = TuneConfig(random_seed=args.seed, n_trials=args.trials, selection_metric=args.selection_metric)
+    tune_cfg = TuneConfig(
+        random_seed=args.seed,
+        n_trials=args.trials,
+        selection_metric=args.selection_metric,
+    )
 
     # CV config
-    cv_cfg = CVConfig(final_train_end_year=args.final_train_end, test_start_year=args.test_start, test_end_year=args.test_end)
+    cv_cfg = CVConfig(
+        final_train_end_year=args.final_train_end,
+        test_start_year=args.test_start,
+        test_end_year=args.test_end,
+    )
     if args.sample_folds:
         folds: List[Tuple[int, int, int]] = []
         for part in args.sample_folds.split(","):
@@ -465,7 +524,12 @@ def main() -> int:
             train_end_s, val_range = part.split(":")
             val_start_s, val_end_s = val_range.split("-")
             folds.append((int(train_end_s), int(val_start_s), int(val_end_s)))
-        cv_cfg = CVConfig(folds=tuple(folds), final_train_end_year=args.final_train_end, test_start_year=args.test_start, test_end_year=args.test_end)
+        cv_cfg = CVConfig(
+            folds=tuple(folds),
+            final_train_end_year=args.final_train_end,
+            test_start_year=args.test_start,
+            test_end_year=args.test_end,
+        )
 
     rng = random.Random(tune_cfg.random_seed)
     np.random.seed(tune_cfg.random_seed)
@@ -494,7 +558,11 @@ def main() -> int:
     def append_trial_row(row: Dict[str, Any]) -> None:
         nonlocal trials_log
         new_row = pd.DataFrame([row])
-        trials_log = pd.concat([trials_log, new_row], ignore_index=True) if not trials_log.empty else new_row
+        trials_log = (
+            pd.concat([trials_log, new_row], ignore_index=True)
+            if not trials_log.empty
+            else new_row
+        )
         trials_log.to_csv(trials_log_path, index=False)
 
     # Prepare folds
@@ -505,14 +573,20 @@ def main() -> int:
 
     print(f"[INFO] Data: {args.data} sep={repr(args.sep)} shape={df.shape}")
     print(f"[INFO] Output: {out_base}")
-    print(f"[INFO] Trials: {tune_cfg.n_trials} seed={tune_cfg.random_seed} selection_metric={tune_cfg.selection_metric}")
+    print(
+        f"[INFO] Trials: {tune_cfg.n_trials} seed={tune_cfg.random_seed} selection_metric={tune_cfg.selection_metric}"
+    )
     print(f"[INFO] Device: {args.device}")
     print(f"[INFO] Folds: {len(usable_folds)} usable / {len(folds)} total")
     for f in folds:
         if f.get("skipped"):
-            print(f"  - SKIP fold train<= {f['train_end']} val={f['val_start']}-{f['val_end']} (train_rows={f['train_rows']} val_rows={f['val_rows']})")
+            print(
+                f"  - SKIP fold train<= {f['train_end']} val={f['val_start']}-{f['val_end']} (train_rows={f['train_rows']} val_rows={f['val_rows']})"
+            )
         else:
-            print(f"  - fold train<= {f['train_end']} val={f['val_start']}-{f['val_end']} (train_rows={f['train_rows']} val_rows={f['val_rows']})")
+            print(
+                f"  - fold train<= {f['train_end']} val={f['val_start']}-{f['val_end']} (train_rows={f['train_rows']} val_rows={f['val_rows']})"
+            )
 
     best = {
         "trial": None,
@@ -536,7 +610,9 @@ def main() -> int:
             X_tr_raw, y_tr = select_features(train_df, feat_cfg)
             X_va_raw, y_va = select_features(val_df, feat_cfg)
 
-            X_tr, X_va = one_hot_encode_splits(X_tr_raw, X_va_raw, feat_cfg.categorical_cols)
+            X_tr, X_va = one_hot_encode_splits(
+                X_tr_raw, X_va_raw, feat_cfg.categorical_cols
+            )
 
             y_tr_log = _safe_log1p(y_tr.to_numpy())
             y_va_log = _safe_log1p(y_va.to_numpy())
@@ -545,7 +621,9 @@ def main() -> int:
             fold_scores.append(score_fold_original_space(model, X_va, y_va.to_numpy()))
 
         agg = aggregate_cv_scores(fold_scores)
-        metric_to_min = agg["rmse_mean"] if tune_cfg.selection_metric == "rmse" else agg["mae_mean"]
+        metric_to_min = (
+            agg["rmse_mean"] if tune_cfg.selection_metric == "rmse" else agg["mae_mean"]
+        )
 
         # Log every trial
         append_trial_row(
@@ -576,16 +654,23 @@ def main() -> int:
             )
 
         if (t + 1) % 10 == 0 or t == 0:
-            print(f"[TUNE] {t+1:03d}/{tune_cfg.n_trials} current={metric_to_min:.4f} best={best['cv_score']:.4f}")
+            print(
+                f"[TUNE] {t + 1:03d}/{tune_cfg.n_trials} current={metric_to_min:.4f} best={best['cv_score']:.4f}"
+            )
 
     if best["params"] is None:
         raise RuntimeError("No best params selected (unexpected).")
 
     # Train final model on <= final_train_end_year and evaluate on test window
     final_train_df = df[df[feat_cfg.year_col] <= cv_cfg.final_train_end_year].copy()
-    test_df = df[(df[feat_cfg.year_col] >= cv_cfg.test_start_year) & (df[feat_cfg.year_col] <= cv_cfg.test_end_year)].copy()
+    test_df = df[
+        (df[feat_cfg.year_col] >= cv_cfg.test_start_year)
+        & (df[feat_cfg.year_col] <= cv_cfg.test_end_year)
+    ].copy()
     if final_train_df.empty or test_df.empty:
-        raise ValueError(f"Empty final train/test: train={final_train_df.shape} test={test_df.shape}")
+        raise ValueError(
+            f"Empty final train/test: train={final_train_df.shape} test={test_df.shape}"
+        )
 
     X_tr_raw, y_tr = select_features(final_train_df, feat_cfg)
     X_te_raw, y_te = select_features(test_df, feat_cfg)
@@ -598,16 +683,23 @@ def main() -> int:
 
     # Fit with early stopping on a small tail split of training? For simplicity, we use test_df as eval_set ONLY for early stopping? NO (leakage).
     # Instead: split off the last 2 years of training as internal early stop (2017–2018) if available.
-    internal_val_df = final_train_df[(final_train_df[feat_cfg.year_col] >= 2017) & (final_train_df[feat_cfg.year_col] <= 2018)].copy()
+    internal_val_df = final_train_df[
+        (final_train_df[feat_cfg.year_col] >= 2017)
+        & (final_train_df[feat_cfg.year_col] <= 2018)
+    ].copy()
     if internal_val_df.empty:
         # fallback: 10% random slice of final_train_df (still time-safe-ish but not ideal)
-        internal_val_df = final_train_df.sample(frac=0.1, random_state=tune_cfg.random_seed)
+        internal_val_df = final_train_df.sample(
+            frac=0.1, random_state=tune_cfg.random_seed
+        )
 
     internal_train_df = final_train_df.drop(index=internal_val_df.index)
 
     X_itr_raw, y_itr = select_features(internal_train_df, feat_cfg)
     X_iva_raw, y_iva = select_features(internal_val_df, feat_cfg)
-    X_itr, X_iva = one_hot_encode_splits(X_itr_raw, X_iva_raw, feat_cfg.categorical_cols)
+    X_itr, X_iva = one_hot_encode_splits(
+        X_itr_raw, X_iva_raw, feat_cfg.categorical_cols
+    )
     y_itr_log = _safe_log1p(y_itr.to_numpy())
     y_iva_log = _safe_log1p(y_iva.to_numpy())
 
@@ -637,13 +729,18 @@ def main() -> int:
     final_model.save_model(str(model_path))
 
     feature_columns = list(X_itr.columns)
-    (out_base / "feature_columns.json").write_text(json.dumps({"columns": feature_columns}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_base / "feature_columns.json").write_text(
+        json.dumps({"columns": feature_columns}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     bundle = {
         "model": final_model,
         "feature_columns": feature_columns,
         "split": {
-            "cv_folds": [dict(train_end=f[0], val_start=f[1], val_end=f[2]) for f in cv_cfg.folds],
+            "cv_folds": [
+                dict(train_end=f[0], val_start=f[1], val_end=f[2]) for f in cv_cfg.folds
+            ],
             "final_train_end_year": cv_cfg.final_train_end_year,
             "test_start_year": cv_cfg.test_start_year,
             "test_end_year": cv_cfg.test_end_year,
@@ -662,19 +759,30 @@ def main() -> int:
     report = {
         "data": {"path": args.data, "sep": args.sep},
         "cv": {
-            "folds": [dict(train_end=f[0], val_start=f[1], val_end=f[2]) for f in cv_cfg.folds],
+            "folds": [
+                dict(train_end=f[0], val_start=f[1], val_end=f[2]) for f in cv_cfg.folds
+            ],
             "usable_folds": int(len(usable_folds)),
-"selection_metric": tune_cfg.selection_metric,
+            "selection_metric": tune_cfg.selection_metric,
             "best_trial": best["trial"],
             "best_cv_score": best["cv_score"],
             "best_cv_aggregate": best["cv_agg"],
             "best_cv_per_fold": best["per_fold"],
             "best_params": best["params"],
         },
-        "final_train": {"end_year": cv_cfg.final_train_end_year, "rows": int(len(final_train_df))},
-        "test": {"years": f"{cv_cfg.test_start_year}-{cv_cfg.test_end_year}", "rows": int(len(test_df)), "metrics": test_metrics},
+        "final_train": {
+            "end_year": cv_cfg.final_train_end_year,
+            "rows": int(len(final_train_df)),
+        },
+        "test": {
+            "years": f"{cv_cfg.test_start_year}-{cv_cfg.test_end_year}",
+            "rows": int(len(test_df)),
+            "metrics": test_metrics,
+        },
     }
-    (out_base / "metrics_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_base / "metrics_report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     # Test predictions for audit
     pred_out = test_df[[feat_cfg.year_col]].copy()

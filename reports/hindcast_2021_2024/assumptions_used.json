@@ -1,0 +1,27 @@
+{
+  "baseline_year": 2020,
+  "temp_baseline_anomaly": 0.0,
+  "noaa_anomaly": {
+    "2021": 0.87,
+    "2022": 0.9,
+    "2023": 1.19,
+    "2024": 1.28
+  },
+  "pp_factors": {
+    "2021": 1.0,
+    "2022": 0.99,
+    "2023": 0.98,
+    "2024": 0.97
+  },
+  "multipliers": {
+    "mineria_factor": 1.02,
+    "infra_factor": 1.01,
+    "agropec_factor": 1.01,
+    "coca_factor": 1.0
+  },
+  "population_growth": {
+    "2022_vs_2021": 0.0096,
+    "2023_vs_2022": 0.0111,
+    "2024_vs_2023": 0.0248
+  }
+}

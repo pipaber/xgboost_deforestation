@@ -1,0 +1,111 @@
+{
+  "data": {
+    "path": "deforestation_dataset_PERU_imputed_coca.csv",
+    "sep": ";"
+  },
+  "cv": {
+    "folds": [
+      {
+        "train_end": 2010,
+        "val_start": 2011,
+        "val_end": 2011
+      },
+      {
+        "train_end": 2011,
+        "val_start": 2012,
+        "val_end": 2012
+      },
+      {
+        "train_end": 2014,
+        "val_start": 2015,
+        "val_end": 2015
+      },
+      {
+        "train_end": 2016,
+        "val_start": 2017,
+        "val_end": 2017
+      },
+      {
+        "train_end": 2016,
+        "val_start": 2018,
+        "val_end": 2018
+      }
+    ],
+    "usable_folds": 5,
+    "selection_metric": "rmse",
+    "best_trial": 335,
+    "best_cv_score": 299.633139333383,
+    "best_cv_aggregate": {
+      "rmse_mean": 299.633139333383,
+      "rmse_std": 42.906222362793045,
+      "mae_mean": 126.43000998408783,
+      "mae_std": 24.654865568072413,
+      "r2_mean": 0.832649070982697,
+      "folds": 5.0
+    },
+    "best_cv_per_fold": [
+      {
+        "rmse": 214.67630808983813,
+        "mae": 91.73886177193721,
+        "r2": 0.8900594409474821,
+        "n": 394.0
+      },
+      {
+        "rmse": 332.16853301472895,
+        "mae": 137.38067792154052,
+        "r2": 0.8008717112319045,
+        "n": 394.0
+      },
+      {
+        "rmse": 315.4372337747087,
+        "mae": 106.2874486867923,
+        "r2": 0.8299608477185811,
+        "n": 394.0
+      },
+      {
+        "rmse": 319.98145063610934,
+        "mae": 161.54983953723857,
+        "r2": 0.8176549777344119,
+        "n": 394.0
+      },
+      {
+        "rmse": 315.90217115152996,
+        "mae": 135.19322200293058,
+        "r2": 0.8246983772811058,
+        "n": 394.0
+      }
+    ],
+    "best_params": {
+      "n_estimators": 5000,
+      "learning_rate": 0.020048603673646994,
+      "max_depth": 7,
+      "min_child_weight": 3.282130629593496,
+      "subsample": 0.8667362869065922,
+      "colsample_bytree": 0.9595634126801285,
+      "reg_alpha": 0.00015391441632236664,
+      "reg_lambda": 1.8803267991884736,
+      "gamma": 0.0008305833834499859,
+      "objective": "reg:squarederror",
+      "random_state": 42,
+      "n_jobs": 32,
+      "early_stopping_rounds": 200,
+      "eval_metric": "rmse",
+      "tree_method": "hist",
+      "device": "cuda"
+    }
+  },
+  "final_train": {
+    "end_year": 2018,
+    "rows": 7092
+  },
+  "test": {
+    "years": "2019-2020",
+    "rows": 788,
+    "metrics": {
+      "mae": 209.291989575582,
+      "rmse": 500.8991749540418,
+      "r2": 0.7252611732379302,
+      "n": 788.0
+    }
+  }
+}

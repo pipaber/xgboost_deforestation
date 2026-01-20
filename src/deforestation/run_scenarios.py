@@ -15,11 +15,11 @@ What this does
 
 Run (Windows / Linux)
 ---------------------
-uv run python src/deforestation/run_scenarios.py ^
-  --bundle models/xgb_timecv_v1_gpu/bundle.joblib ^
-  --data deforestation_dataset_PERU_imputed_coca.csv ^
-  --sep ';' ^
-  --scenarios scenarios/scenarios.yaml ^
+uv run python src/deforestation/run_scenarios.py \
+  --bundle models/xgb_timecv_v1/bundle.joblib \
+  --data deforestation_dataset_PERU_imputed_coca.csv \
+  --sep ';' \
+  --scenarios scenarios/scenarios.yaml \
   --out reports/scenarios/xgb_timecv_v1_gpu_baseline2020
 
 Notes

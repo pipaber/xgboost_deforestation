@@ -1,0 +1,15 @@
+form_boscosa
+area_agropec
+tmean
+YEAR
+pp
+Región_SELVA
+dens_pob
+NOMBDEP_SAN_MARTIN
+Dist_ANP
+NOMBDEP_LORETO
+Coca_ha
+Infraestructura
+Río_lago_u_océano
+Población
+hum_suelo

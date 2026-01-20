@@ -30,7 +30,7 @@ Recommended commands:
     --data deforestation_dataset_PERU_imputed_coca.csv \
     --sep ';' \
     --split test \
-    --out reports/shap/xgb_tune_v1 \
+    --out reports/shap/xgb_timecv_v1 \
     --topk 15
 
 Notes:
