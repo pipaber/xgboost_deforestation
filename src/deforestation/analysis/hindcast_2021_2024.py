@@ -28,11 +28,14 @@ Inputs
 Macro assumptions included
 -------------------------
 Temperature anomaly (NOAA global anomaly, user-provided):
-  2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28
+  2020: 1.02
+  2021: 0.87
+  2022: 0.90
+  2023: 1.19
+  2024: 1.28
 
-We translate this into *relative warming increments vs baseline year 2020*
-by subtracting baseline anomaly (configurable; default 0.0 if unknown).
-If you know the 2020 NOAA anomaly, set --temp-baseline-anomaly accordingly.
+We translate this into relative warming increments vs baseline year 2020:
+  delta_t = anomaly_year - anomaly_2020
 
 Population (macrotrends; user-provided growth rates):
   2022 vs 2021: +0.96%
@@ -49,9 +52,14 @@ Infrastructure / mining / agriculture:
   You can override multipliers.
 
 Coca:
-  Placeholder: we support optional per-department multipliers by year,
-  but without a district-level map of coca change, we keep district shares constant within a department.
-  (You can provide a JSON mapping to override this.)
+  We support DEPARTMENT-level coca scaling from a markdown report (or any extracted table),
+  preserving within-department district shares:
+    1) Parse department-level coca totals for years 2020..2024 from coca_report_2021_2024.md
+    2) Compute per-department multipliers for each year relative to 2020
+    3) Apply multiplier to district Coca_ha for districts in that department
+
+Illegal mining:
+  Not explicitly modeled here unless you adjust Minería multipliers or provide better covariates.
 
 Outputs
 -------
@@ -74,8 +82,9 @@ uv run python src/deforestation/analysis/hindcast_2021_2024.py \
   --bundle models/xgb_timecv_v1_gpu/bundle.joblib \
   --data deforestation_dataset_PERU_imputed_coca.csv \
   --sep ';' \
-  --loss Bosque_y_perdida_de_bosques_por_Distrito_al_2024_curated.csv \
-  --out reports/hindcast_2021_2024
+    --loss Bosque_y_perdida_de_bosques_por_Distrito_al_2024_curated.csv \
+    --out reports/hindcast_2021_2024 \
+    --coca-dept-csv data_external/coca_department_2020_2024.csv
 
 """
 
@@ -269,19 +278,22 @@ def apply_temperature_anomaly(
     df: pd.DataFrame,
     year: int,
     temp_col: str = "tmean",
-    baseline_anomaly: float = 0.0,
+    baseline_anomaly_2020: float = 1.02,
 ) -> pd.DataFrame:
     """
     Apply additive temperature anomaly based on NOAA global anomaly values.
-    We use (anomaly_year - baseline_anomaly) as delta (°C) added to tmean.
 
-    If you know the 2020 anomaly, pass it via --temp-baseline-anomaly.
+    We use:
+      delta = anomaly_year - anomaly_2020
+    and add delta (°C) to tmean.
+
+    Baseline anomaly for 2020 is 1.02°C (user-provided).
     """
-    noaa = {2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28}
+    noaa = {2020: 1.02, 2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28}
     if year not in noaa:
         return df.copy()
 
-    delta = float(noaa[year] - baseline_anomaly)
+    delta = float(noaa[year] - baseline_anomaly_2020)
 
     out = df.copy()
     if temp_col in out.columns:
@@ -333,10 +345,11 @@ def apply_simple_multipliers(
 ) -> pd.DataFrame:
     """
     Apply simple multiplicative adjustments to human pressure variables.
-    Defaults intended to represent small changes under political uncertainty.
 
-    These factors are applied uniformly (per district). If you later have region-specific rules,
-    expand this function accordingly.
+    Notes:
+    - These factors are applied uniformly (per district).
+    - Coca is handled separately via department-level scaling when a coca report is provided.
+      We keep coca_factor here as a fallback (default 1.0 recommended when using dept scaling).
     """
     out = df.copy()
 
@@ -374,8 +387,8 @@ def main() -> int:
     ap.add_argument(
         "--temp-baseline-anomaly",
         type=float,
-        default=0.0,
-        help="Baseline anomaly (e.g., NOAA 2020) to subtract.",
+        default=1.02,
+        help="NOAA global temperature anomaly for 2020 (°C). Used for delta = anomaly_year - anomaly_2020.",
     )
     ap.add_argument(
         "--top-provinces", type=int, default=20, help="Top N provinces for plots."
@@ -406,7 +419,16 @@ def main() -> int:
         "--coca-factor",
         type=float,
         default=1.00,
-        help="Annual coca multiplier (district shares constant).",
+        help="Fallback annual coca multiplier. Prefer department-level scaling below.",
+    )
+    ap.add_argument(
+        "--coca-dept-csv",
+        default="",
+        help=(
+            "Optional path to a CSV with department coca totals for 2020–2024. "
+            "Expected columns: Departamento,2020,2021,2022,2023,2024. "
+            "If provided, department-level multipliers vs 2020 are applied to district Coca_ha."
+        ),
     )
     args = ap.parse_args()
 
@@ -452,6 +474,67 @@ def main() -> int:
         2024: float(args.pp_factor_2024),
     }
 
+    def _load_coca_dept_totals_csv(csv_path: Path) -> Dict[str, Dict[int, float]]:
+        """
+        Load department-level coca totals from a CSV.
+        Expected columns: Departamento,2020,2021,2022,2023,2024
+
+        Returns:
+          {DEPARTAMENTO_UPPER: {year: total_ha}}
+        """
+        dfc = pd.read_csv(csv_path)
+
+        required = ["Departamento", "2020", "2021", "2022", "2023", "2024"]
+        missing = [c for c in required if c not in dfc.columns]
+        if missing:
+            raise ValueError(
+                f"Coca dept CSV missing required columns: {missing}. "
+                f"Expected at least: {required}"
+            )
+
+        # Normalize department name
+        dfc["Departamento"] = dfc["Departamento"].astype(str).str.strip().str.upper()
+
+        # Coerce numeric (allow thousands separators just in case)
+        for y in [2020, 2021, 2022, 2023, 2024]:
+            col = str(y)
+            dfc[col] = (
+                dfc[col]
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .replace("nan", np.nan)
+            )
+            dfc[col] = pd.to_numeric(dfc[col], errors="coerce")
+
+        out: Dict[str, Dict[int, float]] = {}
+        for _, row in dfc.iterrows():
+            dep = str(row["Departamento"]).strip().upper()
+            if dep in ("TOTAL", "TOTAL*") or dep == "":
+                continue
+            out[dep] = {}
+            for y in [2020, 2021, 2022, 2023, 2024]:
+                v = row.get(str(y))
+                if v is not None and pd.notna(v):
+                    out[dep][y] = float(v)
+
+        return out
+
+    coca_dept_totals: Dict[str, Dict[int, float]] = {}
+    coca_dept_multipliers: Dict[str, Dict[int, float]] = {}
+    if args.coca_dept_csv:
+        csvp = Path(args.coca_dept_csv)
+        if csvp.exists():
+            coca_dept_totals = _load_coca_dept_totals_csv(csvp)
+            # Convert totals to multipliers relative to 2020
+            for dep, m in coca_dept_totals.items():
+                base2020 = m.get(2020)
+                if base2020 is None or base2020 <= 0:
+                    continue
+                coca_dept_multipliers[dep] = {}
+                for y in years:
+                    if y in m and m[y] is not None:
+                        coca_dept_multipliers[dep][y] = float(m[y] / base2020)
+
     for y in years:
         d = base.copy()
         d["YEAR"] = y
@@ -459,7 +542,7 @@ def main() -> int:
         # Apply macro assumptions
         d = apply_population_growth(d, year=y)
         d = apply_temperature_anomaly(
-            d, year=y, baseline_anomaly=float(args.temp_baseline_anomaly)
+            d, year=y, baseline_anomaly_2020=float(args.temp_baseline_anomaly)
         )
         d = apply_precip_multiplier_by_region(d, year=y, base_factor=pp_factors[y])
 
@@ -472,6 +555,15 @@ def main() -> int:
             agropec_factor=float(args.agropec_factor),
             coca_factor=float(args.coca_factor),
         )
+
+        # Department-level coca scaling (preferred)
+        if coca_dept_multipliers and "Coca_ha" in d.columns and "NOMBDEP" in d.columns:
+            dep_upper = d["NOMBDEP"].astype(str).str.upper()
+            mult = np.ones(len(d), dtype=float)
+            for dep, per_year in coca_dept_multipliers.items():
+                if y in per_year:
+                    mult = np.where(dep_upper == dep, mult * float(per_year[y]), mult)
+            d["Coca_ha"] = pd.to_numeric(d["Coca_ha"], errors="coerce") * mult
 
         # Predict
         X = build_feature_matrix(d, train_cfg, feature_columns)
@@ -699,20 +791,22 @@ def main() -> int:
     # Save assumptions used
     assumptions = {
         "baseline_year": int(args.baseline_year),
-        "temp_baseline_anomaly": float(args.temp_baseline_anomaly),
-        "noaa_anomaly": {2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28},
+        "temp_baseline_anomaly_2020": float(args.temp_baseline_anomaly),
+        "noaa_anomaly": {2020: 1.02, 2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28},
         "pp_factors": pp_factors,
         "multipliers": {
             "mineria_factor": float(args.mineria_factor),
             "infra_factor": float(args.infra_factor),
             "agropec_factor": float(args.agropec_factor),
-            "coca_factor": float(args.coca_factor),
+            "coca_factor_fallback": float(args.coca_factor),
+            "coca_department_scaling": bool(args.coca_dept_csv),
         },
         "population_growth": {
             "2022_vs_2021": 0.0096,
             "2023_vs_2022": 0.0111,
             "2024_vs_2023": 0.0248,
         },
+        "coca_dept_csv_path": str(args.coca_dept_csv) if args.coca_dept_csv else "",
     }
     (out_dir / "assumptions_used.json").write_text(
         json.dumps(assumptions, ensure_ascii=False, indent=2), encoding="utf-8"
