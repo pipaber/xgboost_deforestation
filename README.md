@@ -1,5 +1,5 @@
 # Peru Deforestation Modeling (District-Year)
-XGBoost model + SHAP explainability + scenario analysis + 2021–2024 observed-loss validation + API
+XGBoost model + SHAP explainability + scenario analysis + 2021–2024 observed-loss validation + API + tree export/plots
 
 This repository builds and evaluates a district-year deforestation prediction pipeline for Peru. It includes:
 
@@ -378,3 +378,47 @@ Recommended to NOT commit:
 This repo includes a `.gitignore` that ignores the above by default.
 
 If you include large geodata (shapefiles/rasters), consider Git LFS.
+
+---
+
+## Plot / export XGBoost trees (model interpretability)
+
+XGBoost models are ensembles of many trees. Plotting all trees is usually not useful, but exporting a *handful* can help with technical auditing and communication.
+
+Script:
+- `src/deforestation/plot_tree.py`
+
+Outputs (under the chosen output directory):
+- `tree_<index>.txt` (always written)
+- `tree_<index>.png` (if Graphviz `dot` is installed)
+- `tree_<index>_PNG_FAILED.txt` (written if PNG rendering fails, with diagnostics)
+
+### Export a standard handful (first, middle, last tree)
+```
+uv run python src/deforestation/plot_tree.py \
+  --bundle models/xgb_timecv_v1/bundle.joblib \
+  --handful \
+  --out reports/trees
+```
+
+### Export specific tree indices
+```
+uv run python src/deforestation/plot_tree.py \
+  --bundle models/xgb_timecv_v1/bundle.joblib \
+  --trees 0,50,100 \
+  --out reports/trees
+```
+
+### Export a deterministic random sample
+```
+uv run python src/deforestation/plot_tree.py \
+  --bundle models/xgb_timecv_v1/bundle.joblib \
+  --n-sample 10 \
+  --seed 42 \
+  --out reports/trees
+```
+
+### Notes
+- PNG rendering requires Graphviz installed and `dot` on PATH.
+  - Ubuntu/Debian: `sudo apt-get install graphviz`
+- If PNG fails, check the generated `*_PNG_FAILED.txt` file for actionable diagnostics.
