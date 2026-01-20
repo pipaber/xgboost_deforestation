@@ -72,14 +72,16 @@ Outputs
 
 - Plots (PNG):
   - by_department_trends_observed_vs_pred.png
+  - by_department_trends_observed_vs_pred_log1p.png
   - by_province_topN_trends_observed_vs_pred.png
+  - by_province_topN_trends_observed_vs_pred_log1p.png
   - scatter_observed_vs_pred_2021_2024.png
   - residuals_hist.png
 
 Run
 ---
 uv run python src/deforestation/analysis/hindcast_2021_2024.py \
-  --bundle models/xgb_timecv_v1_gpu/bundle.joblib \
+  --bundle models/xgb_timecv_v1/bundle.joblib \
   --data deforestation_dataset_PERU_imputed_coca.csv \
   --sep ';' \
     --loss Bosque_y_perdida_de_bosques_por_Distrito_al_2024_curated.csv \
@@ -718,6 +720,43 @@ def main() -> int:
     plt.savefig(out_dir / "by_department_trends_observed_vs_pred.png", dpi=220)
     plt.close()
 
+    # Department trends (log1p scale for readability across magnitudes)
+    plt.figure(figsize=(12, 6))
+    for dep_name, g in dep.groupby("DEPARTAMENTO", dropna=False):
+        g = g.sort_values("YEAR")
+        plt.plot(
+            g["YEAR"],
+            np.log1p(g["observed_loss_ha"]),
+            linewidth=1.2,
+            alpha=0.6,
+        )
+    plt.plot(
+        dep_tot["YEAR"],
+        np.log1p(dep_tot["observed_loss_ha"]),
+        marker="o",
+        linewidth=3,
+        label="Observed total (log1p)",
+        color="black",
+    )
+    plt.plot(
+        dep_tot["YEAR"],
+        np.log1p(dep_tot["pred_def_ha"]),
+        marker="o",
+        linewidth=3,
+        label="Predicted total (log1p)",
+        color="red",
+    )
+    plt.title(
+        "Observed vs predicted forest loss (log1p scale; department lines faint; totals highlighted)"
+    )
+    plt.xlabel("Year")
+    plt.ylabel("log1p(ha)")
+    plt.xticks(years)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dir / "by_department_trends_observed_vs_pred_log1p.png", dpi=220)
+    plt.close()
+
     # Province top-N by observed 2021–2024 total
     prov_tot = (
         prov.groupby(["DEPARTAMENTO", "PROVINCIA"], dropna=False)["observed_loss_ha"]
@@ -763,6 +802,36 @@ def main() -> int:
     plt.savefig(out_dir / "by_province_topN_trends_observed_vs_pred.png", dpi=220)
     plt.close()
 
+    # Province trends (log1p scale)
+    plt.figure(figsize=(13, 7))
+    for (dname, pname), g in prov2.groupby(["DEPARTAMENTO", "PROVINCIA"], dropna=False):
+        g = g.sort_values("YEAR")
+        plt.plot(
+            g["YEAR"],
+            np.log1p(g["observed_loss_ha"]),
+            linewidth=1.2,
+            alpha=0.75,
+            label=f"Obs {dname}-{pname} (log1p)",
+        )
+        plt.plot(
+            g["YEAR"],
+            np.log1p(g["pred_def_ha"]),
+            linewidth=1.2,
+            alpha=0.75,
+            linestyle="--",
+            label=f"Pred {dname}-{pname} (log1p)",
+        )
+    plt.title(
+        f"Top {int(args.top_provinces)} provinces: observed (solid) vs predicted (dashed), log1p scale"
+    )
+    plt.xlabel("Year")
+    plt.ylabel("log1p(ha)")
+    plt.xticks(years)
+    plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=6)
+    plt.tight_layout()
+    plt.savefig(out_dir / "by_province_topN_trends_observed_vs_pred_log1p.png", dpi=220)
+    plt.close()
+
     # Scatter observed vs predicted (all district-years)
     scat = joined[
         np.isfinite(joined["observed_loss_ha"]) & np.isfinite(joined["pred_def_ha"])
@@ -776,6 +845,20 @@ def main() -> int:
     plt.ylabel("Predicted deforestation (ha)")
     plt.tight_layout()
     plt.savefig(out_dir / "scatter_observed_vs_pred_2021_2024.png", dpi=220)
+    plt.close()
+
+    # Scatter observed vs predicted (log1p scale; safe with zeros)
+    plt.figure(figsize=(7, 7))
+    x_log = np.log1p(scat["observed_loss_ha"].to_numpy(dtype=float))
+    y_log = np.log1p(scat["pred_def_ha"].to_numpy(dtype=float))
+    plt.scatter(x_log, y_log, s=10, alpha=0.35)
+    maxv_log = float(max(np.nanmax(x_log), np.nanmax(y_log)))
+    plt.plot([0, maxv_log], [0, maxv_log], color="black", linewidth=1)
+    plt.title("Observed vs predicted (district-year, 2021–2024) — log1p scale")
+    plt.xlabel("log1p(observed loss ha)")
+    plt.ylabel("log1p(predicted deforestation ha)")
+    plt.tight_layout()
+    plt.savefig(out_dir / "scatter_observed_vs_pred_2021_2024_log1p.png", dpi=220)
     plt.close()
 
     # Residual histogram
