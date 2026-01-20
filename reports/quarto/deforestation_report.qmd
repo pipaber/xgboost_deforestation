@@ -10,7 +10,7 @@ format:
     number-sections: true
     code-fold: true
     theme: cosmo
-    embed-resources: false
+    embed-resources: true
 execute:
   echo: false
   warning: false
@@ -279,26 +279,26 @@ Example run directory (GPU time-CV run):
 
 Typical outputs include:
 
-- `shap_summary_beeswarm.png`  
+- `shap_summary_beeswarm.png`
   **How to read:** each dot is a row; x-axis is SHAP value (impact on prediction); color is feature value.
   - dots to the right increase the prediction
   - dots to the left decrease the prediction
   - wide horizontal spread means high influence and heterogeneous effects
 
-- `shap_summary_bar.png`  
+- `shap_summary_bar.png`
   **How to read:** global importance (mean absolute SHAP value). This ranks features by average magnitude of influence, not direction.
 
-- `shap_dependence_<feature>.png`  
+- `shap_dependence_<feature>.png`
   **How to read:** relationship between a feature value (x-axis) and its SHAP contribution (y-axis).
   - reveals nonlinearity, thresholds, saturation, and interactions (if colored by another variable in the plot)
 
-- `shap_waterfall_example.png`  
+- `shap_waterfall_example.png`
   **How to read:** for a single observation, shows how features push the prediction from a base value to the final predicted value.
 
-- `shap_mean_abs.csv` / `top_features.txt`  
+- `shap_mean_abs.csv` / `top_features.txt`
   Tabular summaries of global importance.
 
-- `shap_run_metadata.json`  
+- `shap_run_metadata.json`
   Reproducibility metadata (data path, separator, train_config, etc.). For the referenced run, the metadata indicates:
   - dataset: `deforestation_dataset_PERU_imputed_coca.csv` with `;` separator
   - categorical columns: `Región`, `NOMBDEP`, `Cluster`
@@ -365,13 +365,13 @@ Scenario outputs (example run):
 
 Contains:
 
-- `scenario_summary.json`  
+- `scenario_summary.json`
   quick totals per scenario
 
-- `scenarios_total_pred_ha.png`  
+- `scenarios_total_pred_ha.png`
   bar chart of total predicted deforestation by scenario
 
-- `scenarios_total_delta_ha.png`  
+- `scenarios_total_delta_ha.png`
   bar chart of total delta vs baseline by scenario
 
 - Per-scenario subfolders (e.g., `good/`, `mild/`, `bad/`) containing:
