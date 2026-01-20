@@ -1,0 +1,203 @@
+0:[form_boscosa<28336.0801] yes=1,no=2,missing=2,gain=253.525055,cover=5429
+	1:[form_boscosa<5916.95312] yes=3,no=4,missing=4,gain=46.6681595,cover=2866
+3:[Región_SELVA] yes=7,no=8,gain=19.4298248,cover=1375
+			7:[Río_lago_u_océano<3.21977592] yes=15,no=16,missing=16,gain=8.30862427,cover=712
+				15:[form_boscosa<2713.28394] yes=31,no=32,missing=32,gain=6.17511368,cover=402
+					31:[tmean<13.5358896] yes=63,no=64,missing=64,gain=4.042202,cover=208
+						63:[dens_pob<13.8550501] yes=119,no=120,missing=120,gain=5.02709627,cover=24
+							119:leaf=-0.0101229716,cover=12
+							120:leaf=0.00696134986,cover=12
+						64:[Pobreza<69.5999985] yes=121,no=122,missing=121,gain=2.91110992,cover=184
+							121:leaf=-0.0111532016,cover=175
+							122:leaf=0.000444598409,cover=9
+					32:[dens_pob<18.0454006] yes=65,no=66,missing=66,gain=6.27562237,cover=194
+						65:[form_boscosa<3783.27808] yes=123,no=124,missing=124,gain=2.93394375,cover=140
+							123:leaf=0.00307037239,cover=31
+							124:leaf=-0.00377565669,cover=109
+						66:[form_boscosa<3783.27808] yes=125,no=126,missing=126,gain=1.78327179,cover=54
+							125:leaf=-0.00691624731,cover=35
+							126:leaf=-0.0151655786,cover=19
+				16:[YEAR<2002] yes=33,no=34,missing=34,gain=1.98480225,cover=310
+					33:[Río_lago_u_océano<126.879303] yes=67,no=68,missing=68,gain=2.29211688,cover=22
+						67:[Pbi_dist<9965158] yes=127,no=128,missing=128,gain=0.807977915,cover=15
+							127:leaf=-0.0117152389,cover=11
+							128:leaf=-0.00092612335,cover=4
+						68:leaf=0.00363773154,cover=7
+34:[NOMBDEP_PASCO] yes=69,no=70,gain=1.1499939,cover=288
+						69:[Población<7373] yes=129,no=130,missing=130,gain=1.17385864,cover=275
+							129:leaf=-0.0111182583,cover=182
+							130:leaf=-0.0145994229,cover=93
+						70:[Infraestructura<9] yes=131,no=132,missing=132,gain=0.545292556,cover=13
+							131:leaf=-0.00789950322,cover=8
+							132:leaf=0.000164535828,cover=5
+			8:[Río_lago_u_océano<0.540000021] yes=17,no=18,missing=18,gain=6.96730804,cover=663
+				17:[tmean<19.9904995] yes=35,no=36,missing=36,gain=5.43306541,cover=75
+					35:[dens_pob<8.92891026] yes=71,no=72,missing=72,gain=1.05975306,cover=33
+						71:leaf=0.00453673629,cover=4
+						72:[Población<643] yes=133,no=134,missing=134,gain=0.55918324,cover=29
+							133:leaf=-0.00852028839,cover=10
+							134:leaf=-0.00255741947,cover=19
+					36:[Dist_cat_Min<7846.50293] yes=73,no=74,missing=74,gain=1.2260704,cover=42
+						73:leaf=-0.00366335828,cover=5
+						74:leaf=-0.0159541611,cover=37
+				18:[Población<1449] yes=37,no=38,missing=38,gain=5.51552582,cover=588
+					37:[Pbi_dist<925561.688] yes=75,no=76,missing=76,gain=3.9960041,cover=140
+						75:[Pbi_dist<720906.125] yes=135,no=136,missing=136,gain=0.638858318,cover=20
+							135:leaf=-0.00470081018,cover=4
+							136:leaf=0.00295060803,cover=16
+						76:[Población<766] yes=137,no=138,missing=138,gain=3.88324738,cover=120
+							137:leaf=-0.00447404524,cover=58
+							138:leaf=-0.0118734306,cover=62
+					38:[dens_pob<51.5115204] yes=77,no=78,missing=77,gain=6.33978605,cover=448
+						77:[Pobreza<26.2000008] yes=139,no=140,missing=139,gain=5.36403894,cover=245
+							139:leaf=-0.00177332328,cover=198
+							140:leaf=0.00563615886,cover=47
+						78:[Río_lago_u_océano<6.17535877] yes=141,no=142,missing=142,gain=3.64528275,cover=203
+							141:leaf=0.00140220323,cover=29
+							142:leaf=-0.00618880801,cover=174
+4:[NOMBDEP_SAN_MARTIN] yes=9,no=10,gain=28.8856239,cover=1491
+			9:[YEAR<2016] yes=19,no=20,missing=20,gain=13.6636848,cover=1207
+19:[NOMBDEP_UCAYALI] yes=39,no=40,gain=8.84046173,cover=1132
+39:[NOMBDEP_HUANUCO] yes=79,no=80,gain=6.28650665,cover=1097
+						79:[Población<6156] yes=143,no=144,missing=143,gain=5.8286972,cover=985
+							143:leaf=-0.0030726518,cover=550
+							144:leaf=-0.00619692961,cover=435
+						80:[Infraestructura<7.5117631] yes=145,no=146,missing=146,gain=4.47753239,cover=112
+							145:leaf=-0.00289822649,cover=64
+							146:leaf=0.00506532146,cover=48
+					40:[Yuca_ha<-9.99999975e-06] yes=81,no=82,missing=81,gain=0.654489517,cover=35
+						81:[YEAR<2005] yes=147,no=148,missing=148,gain=0.833810806,cover=30
+							147:leaf=0.000784717966,cover=7
+							148:leaf=0.00884569529,cover=23
+						82:leaf=-0.00050039799,cover=5
+				20:[Yuca_ha<53] yes=41,no=42,missing=42,gain=2.71054125,cover=75
+					41:[hum_suelo<10.1289902] yes=83,no=84,missing=84,gain=1.38445592,cover=32
+						83:[area_agropec<3690.70288] yes=149,no=150,missing=150,gain=0.782077968,cover=16
+							149:leaf=0.00327204959,cover=4
+							150:leaf=-0.00571407424,cover=12
+						84:[Población<2094] yes=151,no=152,missing=152,gain=0.831948936,cover=16
+							151:leaf=-0.00181193219,cover=5
+							152:leaf=0.00726332841,cover=11
+42:[NOMBDEP_AYACUCHO] yes=85,no=86,gain=0.291301727,cover=43
+						85:[hum_suelo<21.0793991] yes=153,no=154,missing=154,gain=0.339039803,cover=39
+							153:leaf=0.00982962083,cover=31
+							154:leaf=0.00379897445,cover=8
+						86:leaf=0.00197241409,cover=4
+			10:[Población<2593] yes=21,no=22,missing=22,gain=7.02146053,cover=284
+				21:[Población<1897] yes=43,no=44,missing=44,gain=1.27026927,cover=32
+					43:[Pbi_dist<2444988] yes=87,no=88,missing=88,gain=0.478307694,cover=19
+						87:leaf=0.00344241248,cover=5
+						88:[Yuca_ha<23] yes=155,no=156,missing=155,gain=0.333217472,cover=14
+							155:leaf=-0.00464300066,cover=10
+							156:leaf=0.00149615272,cover=4
+					44:[Pbi_dist<4212909] yes=89,no=90,missing=90,gain=0.215301037,cover=13
+						89:leaf=-0.00414976152,cover=6
+						90:leaf=-0.0114553189,cover=7
+				22:[Infraestructura<31.3199997] yes=45,no=46,missing=46,gain=8.38430023,cover=252
+					45:leaf=0.0151464175,cover=28
+					46:[YEAR<2006] yes=91,no=92,missing=92,gain=4.76144648,cover=224
+						91:[YEAR<2005] yes=157,no=158,missing=158,gain=3.0625782,cover=68
+							157:leaf=0.00540665304,cover=52
+							158:leaf=0.0154410293,cover=16
+						92:[Pobreza<53.2999992] yes=159,no=160,missing=159,gain=3.61243033,cover=156
+							159:leaf=0.00073129969,cover=141
+							160:leaf=0.0105585745,cover=15
+	2:[area_agropec<23928.8203] yes=5,no=6,missing=6,gain=30.9687042,cover=2563
+		5:[form_boscosa<118502.5] yes=11,no=12,missing=12,gain=14.8045311,cover=1786
+11:[NOMBDEP_SAN_MARTIN] yes=23,no=24,gain=8.91351223,cover=889
+				23:[YEAR<2014] yes=47,no=48,missing=48,gain=7.43564606,cover=745
+					47:[tmean<26.8167801] yes=93,no=94,missing=94,gain=3.34041548,cover=612
+93:[NOMBDEP_PUNO] yes=161,no=162,gain=3.23672819,cover=587
+							161:leaf=0.00014007499,cover=538
+							162:leaf=-0.00514985947,cover=49
+						94:[Pobreza<46.4300003] yes=163,no=164,missing=163,gain=1.27274585,cover=25
+							163:leaf=-0.00939014833,cover=21
+							164:leaf=0.00204385119,cover=4
+					48:[tmean<25.4692497] yes=95,no=96,missing=96,gain=1.95545673,cover=133
+						95:[Infraestructura<18.9899998] yes=165,no=166,missing=166,gain=1.08432674,cover=121
+							165:leaf=0.00147139176,cover=25
+							166:leaf=0.00628396356,cover=96
+						96:[Yuca_ha<298] yes=167,no=168,missing=168,gain=0.559109509,cover=12
+							167:leaf=-0.00635346351,cover=6
+							168:leaf=0.00141420914,cover=6
+				24:[form_boscosa<41558.7617] yes=49,no=50,missing=50,gain=8.39113426,cover=144
+					49:[Pbi_dist<13195153] yes=97,no=98,missing=98,gain=2.51394844,cover=65
+						97:[YEAR<2002] yes=169,no=170,missing=170,gain=0.320226669,cover=36
+							169:leaf=0.00524099963,cover=4
+							170:leaf=0.0152694443,cover=32
+						98:[area_agropec<19120.4707] yes=171,no=172,missing=172,gain=0.595477819,cover=29
+							171:leaf=0.00301989471,cover=17
+							172:leaf=0.00916945469,cover=12
+					50:[YEAR<2004] yes=99,no=100,missing=100,gain=1.40685678,cover=79
+						99:[area_agropec<14084.71] yes=173,no=174,missing=174,gain=0.739446282,cover=15
+							173:leaf=-0.0063500246,cover=11
+							174:leaf=0.00260078325,cover=4
+						100:[Población<8947] yes=175,no=176,missing=176,gain=0.828284502,cover=64
+							175:leaf=0.000719934294,cover=40
+							176:leaf=0.00536389137,cover=24
+			12:[Pbi_dist<24443844] yes=25,no=26,missing=25,gain=16.419735,cover=897
+				25:[YEAR<2012] yes=51,no=52,missing=52,gain=10.2184067,cover=850
+					51:[Infraestructura<11.4300003] yes=101,no=102,missing=102,gain=6.34252262,cover=604
+						101:[dens_pob<0.931956172] yes=177,no=178,missing=177,gain=2.08085275,cover=139
+							177:leaf=-0.0018266096,cover=125
+							178:leaf=0.00587967411,cover=14
+						102:[Río_lago_u_océano<10289.9297] yes=179,no=180,missing=180,gain=5.3800602,cover=465
+							179:leaf=0.00588385435,cover=249
+							180:leaf=0.00154941389,cover=216
+					52:[Infraestructura<74.8597107] yes=103,no=104,missing=104,gain=7.51098633,cover=246
+						103:[Infraestructura<53.3699989] yes=181,no=182,missing=182,gain=2.08433819,cover=159
+							181:leaf=0.00563788693,cover=145
+							182:leaf=-0.00221127295,cover=14
+						104:[area_agropec<5583.71387] yes=183,no=184,missing=184,gain=1.18674088,cover=87
+							183:leaf=0.00270130415,cover=6
+							184:leaf=0.0129548153,cover=81
+				26:[area_agropec<23082.0898] yes=53,no=54,missing=54,gain=2.44149208,cover=47
+					53:[Población<8947] yes=105,no=106,missing=106,gain=2.54366684,cover=40
+						105:leaf=0.00881741475,cover=13
+						106:leaf=0.0216135234,cover=27
+					54:leaf=0.00394559558,cover=7
+		6:[tmean<22.5237408] yes=13,no=14,missing=14,gain=11.1833267,cover=777
+			13:[form_boscosa<197440] yes=27,no=28,missing=28,gain=6.52690744,cover=213
+27:[NOMBDEP_HUANUCO] yes=55,no=56,gain=2.68900895,cover=173
+55:[NOMBDEP_JUNIN] yes=107,no=108,gain=3.99871421,cover=126
+						107:[YEAR<2002] yes=185,no=186,missing=186,gain=1.79015839,cover=100
+							185:leaf=0.00687000994,cover=8
+							186:leaf=-0.00212068111,cover=92
+						108:[IDH<0.340037704] yes=187,no=188,missing=188,gain=2.56542253,cover=26
+							187:leaf=-0.00438719336,cover=5
+							188:leaf=0.0101933461,cover=21
+					56:[Dist_cat_Min<11109.2607] yes=109,no=110,missing=110,gain=1.73888111,cover=47
+						109:[Pobreza<44.1100006] yes=189,no=190,missing=190,gain=0.207038403,cover=25
+							189:leaf=0.00318421307,cover=4
+							190:leaf=0.0103986319,cover=21
+						110:[IDH<0.334753901] yes=191,no=192,missing=192,gain=0.397716045,cover=22
+							191:leaf=0.00582924532,cover=5
+							192:leaf=0.000104157371,cover=17
+				28:[Dist_cat_Min<4697.01025] yes=57,no=58,missing=58,gain=0.175052643,cover=40
+					57:leaf=0.00542760035,cover=7
+					58:[IDH<0.225396305] yes=111,no=112,missing=112,gain=0.10045433,cover=33
+						111:leaf=0.00477153948,cover=4
+						112:[Infraestructura<55.7999992] yes=193,no=194,missing=194,gain=0.0356283188,cover=29
+							193:leaf=0.00643930444,cover=6
+							194:leaf=0.0133726671,cover=23
+14:[NOMBDEP_HUANUCO] yes=29,no=30,gain=7.30056,cover=564
+				29:[dens_pob<16.4030094] yes=59,no=60,missing=59,gain=5.32015991,cover=499
+					59:[Río_lago_u_océano<18889.1191] yes=113,no=114,missing=114,gain=6.96835327,cover=454
+						113:[Dist_cat_Min<111239.102] yes=195,no=196,missing=196,gain=5.6864624,cover=294
+							195:leaf=0.0115092834,cover=281
+							196:leaf=-0.0018105139,cover=13
+						114:[YEAR<2012] yes=197,no=198,missing=198,gain=2.66848373,cover=160
+							197:leaf=0.00364265032,cover=106
+							198:leaf=0.00918522477,cover=54
+					60:[Pbi_dist<51729800] yes=115,no=116,missing=116,gain=0.647402883,cover=45
+						115:leaf=-0.00325489277,cover=7
+						116:[Río_lago_u_océano<1416.56494] yes=199,no=200,missing=200,gain=0.620077312,cover=38
+							199:leaf=0.00587424962,cover=14
+							200:leaf=0.000702018791,cover=24
+				30:[dens_pob<5.96935177] yes=61,no=62,missing=61,gain=1.06165314,cover=65
+					61:[YEAR<2005] yes=117,no=118,missing=118,gain=0.134922028,cover=53
+						117:leaf=0.0108404104,cover=12
+						118:[IDH<0.25142011] yes=201,no=202,missing=202,gain=0.0523414612,cover=41
+							201:leaf=0.00876178872,cover=5
+							202:leaf=0.0191108361,cover=36
+					62:leaf=0.0081409039,cover=12
