@@ -777,7 +777,7 @@ class PredictAggregateResponse(BaseModel):
     model_version: Optional[str] = None
     group_by: Literal["department", "province"]
     year: int
-    results: List[Dict[str, Any]]
+    results: Dict[str, Any]
     total_pred_ha: float
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -979,16 +979,38 @@ def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
                 },
             )
 
-    grouped = (
-        base.groupby(group_col, dropna=False)["pred_def_ha"]
-        .sum()
-        .sort_values(ascending=False)
-    )
+    if req.group_by == "province":
+        dep_col = "NOMBDEP"
+        if dep_col not in base.columns:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "department_column_missing",
+                    "message": "Dataset does not contain NOMBDEP for nested province output.",
+                },
+            )
 
-    results = [
-        {"group": str(idx) if idx is not None else "NA", "pred_ha": float(val)}
-        for idx, val in grouped.items()
-    ]
+        grouped = (
+            base.groupby([dep_col, group_col], dropna=False)["pred_def_ha"]
+            .sum()
+            .sort_values(ascending=False)
+        )
+
+        results: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for (dep, prov), val in grouped.items():
+            dep_key = str(dep) if dep is not None else "NA"
+            prov_key = str(prov) if prov is not None else "NA"
+            results.setdefault(dep_key, {})[prov_key] = {"pred_ha": float(val)}
+    else:
+        grouped = (
+            base.groupby(group_col, dropna=False)["pred_def_ha"]
+            .sum()
+            .sort_values(ascending=False)
+        )
+        results = {
+            str(idx) if idx is not None else "NA": {"pred_ha": float(val)}
+            for idx, val in grouped.items()
+        }
 
     total_pred = float(np.sum(pred_ha))
     ms = (time.perf_counter() - t0) * 1000.0
