@@ -98,12 +98,48 @@ DATASET_PATH = Path(
 )
 DATASET_SEP = DEFAULT_DATASET_SEP
 
+# -----------------------------
+# Hindcast defaults (macro assumptions)
+# -----------------------------
+
+HINDCAST_POP_GROWTH = {
+    2021: 1.00,
+    2022: 1.0096,
+    2023: 1.0111,
+    2024: 1.0248,
+}
+
+HINDCAST_NOAA_ANOMALY = {2020: 1.02, 2021: 0.87, 2022: 0.90, 2023: 1.19, 2024: 1.28}
+
+HINDCAST_PP_FACTORS = {2021: 1.00, 2022: 0.99, 2023: 0.98, 2024: 0.97}
+
+HINDCAST_MINERIA_FACTOR = float(
+    os.environ.get("DEFORESTATION_HINDCAST_MINERIA_FACTOR", "1.02").strip() or "1.02"
+)
+HINDCAST_INFRA_FACTOR = float(
+    os.environ.get("DEFORESTATION_HINDCAST_INFRA_FACTOR", "1.01").strip() or "1.01"
+)
+HINDCAST_AGROPEC_FACTOR = float(
+    os.environ.get("DEFORESTATION_HINDCAST_AGROPEC_FACTOR", "1.01").strip() or "1.01"
+)
+HINDCAST_COCA_FACTOR = float(
+    os.environ.get("DEFORESTATION_HINDCAST_COCA_FACTOR", "1.00").strip() or "1.00"
+)
+
+HINDCAST_PP_REGION_MULT = {
+    "SELVA": 1.0,
+    "SIERRA": 0.6,
+    "COSTA": 0.0,
+}
+
 
 # Driver-group labels for output
 DRIVER_GROUPS = [
     "Mining",
     "Infrastructure",
     "Agriculture",
+    "Forest",
+    "Hydrology",
     "Climate",
     "Socioeconomic",
     "Geography/Admin",
@@ -122,7 +158,9 @@ _DRIVER_GROUP_PATTERNS: Dict[str, List[str]] = {
         "vías",
         "vias",
     ],
-    "Agriculture": ["area_agropec", "form_boscosa", "Yuca_ha", "Coca_ha"],
+    "Agriculture": ["area_agropec", "Yuca_ha", "Coca_ha"],
+    "Forest": ["form_boscosa"],
+    "Hydrology": ["Río_lago_u_océano", "Rio_lago_u_oceano"],
     "Climate": ["pp", "tmean", "hum_suelo"],
     "Socioeconomic": [
         "Población",
@@ -388,6 +426,39 @@ def build_X_from_raw(raw: Dict[str, Any], feature_columns: List[str]) -> pd.Data
     return pd.DataFrame(X.reindex(columns=feature_columns))
 
 
+def build_X_from_df(df: pd.DataFrame, feature_columns: List[str]) -> pd.DataFrame:
+    """
+    Convert a raw DataFrame into the trained feature space:
+    - one-hot encode Región and NOMBDEP with dummy_na=True
+    - sanitize feature names
+    - align to feature_columns (add missing with 0, drop extras)
+    """
+    X = df.copy()
+
+    for c in ("Región", "NOMBDEP"):
+        if c in X.columns:
+            X[c] = X[c].astype("string")
+
+    X = pd.get_dummies(
+        X,
+        columns=[c for c in ("Región", "NOMBDEP") if c in X.columns],
+        dummy_na=True,
+    )
+
+    X.columns = sanitize_feature_names(list(X.columns))
+
+    X = pd.DataFrame(X.applymap(lambda v: pd.to_numeric(v, errors="coerce")))
+
+    missing = [c for c in feature_columns if c not in X.columns]
+    for c in missing:
+        X[c] = 0.0
+    extra = [c for c in X.columns if c not in feature_columns]
+    if extra:
+        X = X.drop(columns=extra)
+
+    return pd.DataFrame(X.reindex(columns=feature_columns))
+
+
 def baseline_row_for_ubigeo(
     df: pd.DataFrame, ubigeo: str, baseline_year: int
 ) -> pd.Series:
@@ -458,6 +529,176 @@ def apply_overrides(
     return raw, meta
 
 
+def apply_hindcast(
+    raw: Dict[str, Any],
+    year: int,
+    baseline_year: int,
+    locked: Optional[List[str]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Apply hindcast-style macro adjustments to a raw feature dict.
+    Skips any keys present in `locked` (user overrides win).
+    """
+    locked_set = {str(k) for k in (locked or []) if k is not None}
+
+    meta: Dict[str, Any] = {
+        "mode": "hindcast",
+        "active": False,
+        "baseline_year": baseline_year,
+        "year": year,
+        "applied": [],
+        "skipped": [],
+        "factors": {},
+    }
+
+    if year <= baseline_year:
+        return raw, meta
+
+    def _set_if_unlocked(key: str, value: float) -> None:
+        if key in locked_set:
+            meta["skipped"].append(key)
+            return
+        raw[key] = value
+        meta["applied"].append(key)
+
+    def _mul_if_unlocked(key: str, factor: float) -> None:
+        if key in locked_set:
+            meta["skipped"].append(key)
+            return
+        if key not in raw:
+            return
+        val = pd.to_numeric(raw.get(key), errors="coerce")
+        if pd.isna(val):
+            return
+        raw[key] = float(val) * float(factor)
+        meta["applied"].append(key)
+
+    def _add_if_unlocked(key: str, delta: float) -> None:
+        if key in locked_set:
+            meta["skipped"].append(key)
+            return
+        if key not in raw:
+            return
+        val = pd.to_numeric(raw.get(key), errors="coerce")
+        if pd.isna(val):
+            return
+        raw[key] = float(val) + float(delta)
+        meta["applied"].append(key)
+
+    # Population growth (compound from 2021..year)
+    factor = 1.0
+    for y in range(2021, year + 1):
+        factor *= HINDCAST_POP_GROWTH.get(y, 1.0)
+    meta["factors"]["population_factor"] = float(factor)
+    for c in ["Población", "Poblacion", "dens_pob"]:
+        _mul_if_unlocked(c, factor)
+
+    # Temperature anomaly (NOAA delta vs baseline year)
+    base_anom = HINDCAST_NOAA_ANOMALY.get(baseline_year, 1.02)
+    year_anom = HINDCAST_NOAA_ANOMALY.get(year)
+    if year_anom is not None:
+        delta = float(year_anom - base_anom)
+        meta["factors"]["tmean_delta"] = float(delta)
+        _add_if_unlocked("tmean", delta)
+
+    # Precipitation factor (year + region scaling)
+    pp_factor = float(HINDCAST_PP_FACTORS.get(year, 1.0))
+    region = str(raw.get("Región") or "").strip().upper()
+    region_mult = float(HINDCAST_PP_REGION_MULT.get(region, 1.0))
+    meta["factors"]["pp_factor"] = float(pp_factor)
+    meta["factors"]["pp_region_mult"] = float(region_mult)
+    _mul_if_unlocked("pp", pp_factor * region_mult)
+
+    # Simple multipliers (vs baseline)
+    meta["factors"]["mineria_factor"] = float(HINDCAST_MINERIA_FACTOR)
+    meta["factors"]["infra_factor"] = float(HINDCAST_INFRA_FACTOR)
+    meta["factors"]["agropec_factor"] = float(HINDCAST_AGROPEC_FACTOR)
+    meta["factors"]["coca_factor"] = float(HINDCAST_COCA_FACTOR)
+
+    _mul_if_unlocked("Minería", HINDCAST_MINERIA_FACTOR)
+    _mul_if_unlocked("Infraestructura", HINDCAST_INFRA_FACTOR)
+    _mul_if_unlocked("area_agropec", HINDCAST_AGROPEC_FACTOR)
+    _mul_if_unlocked("Coca_ha", HINDCAST_COCA_FACTOR)
+
+    meta["active"] = True
+    return raw, meta
+
+
+def apply_hindcast_df(
+    df: pd.DataFrame, year: int, baseline_year: int
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Apply hindcast-style macro adjustments to a DataFrame (vectorized).
+    """
+    meta: Dict[str, Any] = {
+        "mode": "hindcast",
+        "active": False,
+        "baseline_year": baseline_year,
+        "year": year,
+        "factors": {},
+        "applied_columns": [],
+    }
+
+    if year <= baseline_year:
+        return df, meta
+
+    out = df.copy()
+
+    # Population growth (compound from 2021..year)
+    factor = 1.0
+    for y in range(2021, year + 1):
+        factor *= HINDCAST_POP_GROWTH.get(y, 1.0)
+    meta["factors"]["population_factor"] = float(factor)
+    for c in ["Población", "Poblacion", "dens_pob"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce") * factor
+            meta["applied_columns"].append(c)
+
+    # Temperature anomaly (NOAA delta vs baseline year)
+    base_anom = HINDCAST_NOAA_ANOMALY.get(baseline_year, 1.02)
+    year_anom = HINDCAST_NOAA_ANOMALY.get(year)
+    if year_anom is not None and "tmean" in out.columns:
+        delta = float(year_anom - base_anom)
+        meta["factors"]["tmean_delta"] = float(delta)
+        out["tmean"] = pd.to_numeric(out["tmean"], errors="coerce") + delta
+        meta["applied_columns"].append("tmean")
+
+    # Precipitation factor (year + region scaling)
+    if "pp" in out.columns:
+        pp_factor = float(HINDCAST_PP_FACTORS.get(year, 1.0))
+        region = out.get("Región")
+        if region is None:
+            out["pp"] = pd.to_numeric(out["pp"], errors="coerce") * pp_factor
+            meta["factors"]["pp_factor"] = float(pp_factor)
+            meta["factors"]["pp_region_mult"] = 1.0
+        else:
+            r = region.astype("string").str.upper()
+            mult = r.map(HINDCAST_PP_REGION_MULT).fillna(1.0).astype(float)
+            out["pp"] = pd.to_numeric(out["pp"], errors="coerce") * pp_factor * mult
+            meta["factors"]["pp_factor"] = float(pp_factor)
+            meta["factors"]["pp_region_mult"] = "by_region"
+        meta["applied_columns"].append("pp")
+
+    # Simple multipliers
+    meta["factors"]["mineria_factor"] = float(HINDCAST_MINERIA_FACTOR)
+    meta["factors"]["infra_factor"] = float(HINDCAST_INFRA_FACTOR)
+    meta["factors"]["agropec_factor"] = float(HINDCAST_AGROPEC_FACTOR)
+    meta["factors"]["coca_factor"] = float(HINDCAST_COCA_FACTOR)
+
+    for col, factor in [
+        ("Minería", HINDCAST_MINERIA_FACTOR),
+        ("Infraestructura", HINDCAST_INFRA_FACTOR),
+        ("area_agropec", HINDCAST_AGROPEC_FACTOR),
+        ("Coca_ha", HINDCAST_COCA_FACTOR),
+    ]:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce") * float(factor)
+            meta["applied_columns"].append(col)
+
+    meta["active"] = True
+    return out, meta
+
+
 # -----------------------------
 # API models
 # -----------------------------
@@ -496,6 +737,10 @@ class PredictByUbigeoBaselineRequest(BaseModel):
         default_factory=dict,
         description="Raw feature overrides (e.g., YEAR, Minería, Pobreza, pp, tmean, etc.)",
     )
+    mode: Literal["hindcast", "baseline"] = Field(
+        default="hindcast",
+        description="hindcast applies 2021+ macro adjustments by default; baseline uses raw 2020 values + overrides only.",
+    )
     include_contributions: bool = Field(
         default=True,
         description="If true, compute grouped SHAP contribution percentages.",
@@ -508,6 +753,32 @@ class PredictResponse(BaseModel):
     model_version: Optional[str] = None
     predictions_ha: List[float]
     driver_contributions: Optional[Dict[str, Any]] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PredictAggregateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group_by: Literal["department", "province"] = Field(
+        ..., description="Aggregation level: department or province"
+    )
+    overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw feature overrides applied to all districts (e.g., YEAR, Minería, pp, tmean)",
+    )
+    mode: Literal["hindcast", "baseline"] = Field(
+        default="hindcast",
+        description="hindcast applies macro adjustments for YEAR > baseline; baseline uses raw baseline values + overrides only.",
+    )
+
+
+class PredictAggregateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_name: str
+    model_version: Optional[str] = None
+    group_by: Literal["department", "province"]
+    year: int
+    results: List[Dict[str, Any]]
+    total_pred_ha: float
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -585,6 +856,23 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
     # Apply overrides (YEAR + variables that change)
     raw, override_meta = apply_overrides(base, req.overrides)
 
+    # Hindcast mode (default): auto-adjust covariates for YEAR > baseline
+    effective_year = DEFAULT_BASELINE_YEAR
+    if "YEAR" in raw:
+        try:
+            effective_year = int(float(raw["YEAR"]))
+        except Exception:
+            effective_year = DEFAULT_BASELINE_YEAR
+
+    hindcast_meta = None
+    if req.mode == "hindcast":
+        raw, hindcast_meta = apply_hindcast(
+            raw,
+            year=effective_year,
+            baseline_year=DEFAULT_BASELINE_YEAR,
+            locked=override_meta.get("overrides_applied") or [],
+        )
+
     # Build trained feature matrix
     X = build_X_from_raw(raw, feature_columns=a.feature_columns)
 
@@ -614,6 +902,113 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
             "ubigeo": ub,
             "baseline_year": DEFAULT_BASELINE_YEAR,
             "override_meta": override_meta,
+            "hindcast_meta": hindcast_meta,
+            "mode": req.mode,
             "effective_year": raw.get("YEAR"),
+        },
+    )
+
+
+@app.post("/predict/aggregate", response_model=PredictAggregateResponse)
+def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
+    t0 = time.perf_counter()
+    a = artifacts()
+
+    df = load_dataset()
+    base = df[df["YEAR"] == DEFAULT_BASELINE_YEAR].copy()
+    if base.empty:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "baseline_rows_not_found",
+                "message": "No baseline rows found for baseline year.",
+                "baseline_year": DEFAULT_BASELINE_YEAR,
+            },
+        )
+
+    overrides = dict(req.overrides or {})
+    override_keys = [str(k).strip() for k in overrides.keys() if k is not None and str(k).strip() != ""]
+
+    # Apply overrides to all rows (broadcast)
+    for k, v in overrides.items():
+        key = str(k).strip()
+        if key == "" or key.upper() == "UBIGEO":
+            continue
+        base[key] = v
+
+    effective_year = DEFAULT_BASELINE_YEAR
+    if "YEAR" in base.columns:
+        try:
+            effective_year = int(float(base["YEAR"].iloc[0]))
+        except Exception:
+            effective_year = DEFAULT_BASELINE_YEAR
+
+    hindcast_meta = None
+    if req.mode == "hindcast":
+        base, hindcast_meta = apply_hindcast_df(
+            base, year=effective_year, baseline_year=DEFAULT_BASELINE_YEAR
+        )
+        # Re-apply overrides to ensure they win
+        for k, v in overrides.items():
+            key = str(k).strip()
+            if key == "" or key.upper() == "UBIGEO":
+                continue
+            base[key] = v
+
+    # Build trained feature matrix
+    X = build_X_from_df(base, feature_columns=a.feature_columns)
+
+    # Predict
+    pred_log = a.model.predict(X)
+    pred_ha = safe_expm1(pred_log).reshape(-1)
+    base["pred_def_ha"] = pred_ha
+
+    # Choose group column
+    group_col = "NOMBDEP"
+    if req.group_by == "province":
+        if "NOMBPROV" in base.columns:
+            group_col = "NOMBPROV"
+        elif "NOMBPROB" in base.columns:
+            group_col = "NOMBPROB"
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "province_column_missing",
+                    "message": "Dataset does not contain NOMBPROV or NOMBPROB.",
+                },
+            )
+
+    grouped = (
+        base.groupby(group_col, dropna=False)["pred_def_ha"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    results = [
+        {"group": str(idx) if idx is not None else "NA", "pred_ha": float(val)}
+        for idx, val in grouped.items()
+    ]
+
+    total_pred = float(np.sum(pred_ha))
+    ms = (time.perf_counter() - t0) * 1000.0
+
+    return PredictAggregateResponse(
+        model_name="xgb_timecv_v1",
+        model_version=str(a.bundle_meta.get("version"))
+        if a.bundle_meta.get("version") is not None
+        else None,
+        group_by=req.group_by,
+        year=effective_year,
+        results=results,
+        total_pred_ha=total_pred,
+        meta={
+            "latency_ms": ms,
+            "baseline_year": DEFAULT_BASELINE_YEAR,
+            "mode": req.mode,
+            "effective_year": effective_year,
+            "group_column": group_col,
+            "overrides_applied": override_keys,
+            "hindcast_meta": hindcast_meta,
         },
     )

@@ -292,11 +292,14 @@ Script:
 - `src/deforestation/api.py`
 
 Purpose:
-Serve deforestation predictions (ha) plus “percent contribution” by driver group based on SHAP:
+Serve deforestation predictions (ha) plus “percent contribution” by driver group based on SHAP.
 
+**Driver groups (current):**
 - Mining
 - Infrastructure
 - Agriculture
+- Forest
+- Hydrology
 - Climate
 - Socioeconomic
 - Geography/Admin
@@ -318,14 +321,35 @@ uv run uvicorn deforestation.api:app --host 0.0.0.0 --port 8000
 curl http://localhost:8000/health
 ```
 
-### Predict with baseline defaults + overrides (modeled “hindcast-style” usage)
+### Predict (default: hindcast mode)
 The API is designed so the user does NOT need to provide every feature. The server:
 - loads the baseline row for `UBIGEO` at `DEFORESTATION_BASELINE_YEAR` (default 2020)
 - applies your numeric overrides (e.g., set YEAR=2024 and adjust Minería, Pobreza, pp, tmean, etc.)
+- **if mode is `hindcast` (default), applies macro adjustments for YEAR > baseline**
 - predicts hectares
 - returns grouped SHAP contributions
 
-Example request (predict year 2024 with overrides):
+#### Request parameters
+- `ubigeo` (required): district code (6-digit)
+- `overrides` (optional): any feature overrides (YEAR, Minería, Pobreza, pp, tmean, etc.)
+- `mode` (optional): `"hindcast"` (default) or `"baseline"`
+- `include_contributions` (optional): default `true`
+
+#### Example request (hindcast for 2024)
+```
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ubigeo": "010101",
+    "overrides": {
+      "YEAR": 2024
+    },
+    "mode": "hindcast",
+    "include_contributions": true
+  }'
+```
+
+#### Example request (baseline mode)
 ```
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
@@ -339,24 +363,26 @@ curl -X POST http://localhost:8000/predict \
       "pp": 0.97,
       "tmean": 0.26
     },
+    "mode": "baseline",
     "include_contributions": true
   }'
 ```
 
 Notes:
-- `ubigeo` identifies the district baseline feature row (baseline year).
-- `YEAR` in overrides lets you “forecast” beyond 2020 as a scenario input.
-- Omitted variables default to baseline values.
+- `hindcast` applies the same macro-style adjustments used in `hindcast_2021_2024.py` (population growth, NOAA temperature delta, precipitation multipliers by region, and simple multipliers for mining/infrastructure/agriculture/coca).
+- `baseline` uses raw baseline values + overrides only (no macro adjustments).
+- **Years beyond 2024:** the current API has built-in assumptions for 2021–2024 only. For later years it will fall back to neutral factors unless you override values.
+  - **Recommended (next step):** move hindcast assumptions to a YAML file (e.g., `scenarios/hindcast_assumptions.yaml`) and use a **carry-forward policy** so that if a year is missing, the API uses the last available year’s factors instead of failing.
 - The response includes:
   - `predictions_ha`: predicted deforestation in hectares
   - `driver_contributions`: grouped SHAP percentages
-  - `meta` including which overrides were applied
+  - `meta` including overrides + hindcast adjustments applied
 
 ### API vs hindcast scripts
 - The **hindcast scripts** are batch evaluation comparing model vs observed 2021–2024 across all districts.
 - The **API** is for interactive, per-district “what-if” predictions with explainability.
 
-If you want the API to exactly mirror the hindcast’s macro assumptions (temperature anomaly series, population growth, coca department scaling), it can be extended to load those assumptions server-side and apply them automatically. The current API is baseline+overrides (general scenario tool), while hindcast is a standardized batch evaluation.
+The API now supports **hindcast mode by default**, which aligns better with post‑2020 usage.
 
 ---
 
