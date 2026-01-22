@@ -1,29 +1,44 @@
 """
-Prediction API for Peru deforestation model (XGBoost) with grouped SHAP contributions.
+Prediction API for Peru deforestation model (XGBoost) with marginal-effects endpoints.
 
 What this API is for
 --------------------
 You want an API where the user does NOT need to provide every feature the model expects.
 Instead, the user provides:
-- stable categorical context: Región, NOMBDEP
-- year: YEAR
+- UBIGEO (district id used only to lookup a baseline row in the server dataset)
+- YEAR (typically > baseline year, e.g. 2024)
 - only the numeric variables they want to change (Minería, Pobreza, etc.)
 
 The API will:
 1) Build a *baseline* feature vector from a server-side dataset row (UBIGEO + baseline_year).
-2) Apply any numeric overrides provided by the caller (and YEAR if provided).
-3) One-hot encode Región and NOMBDEP (no Cluster assumed), sanitize feature names, align to training schema.
-4) Predict deforestation in hectares (model predicts log1p(Def_ha), API returns expm1(pred)).
-5) Compute SHAP values for that request and return:
-   - driver-group percentage contributions (Mining, Infrastructure, Agriculture, Climate, Socioeconomic, Geography/Admin, Other)
+2) Apply any overrides provided by the caller (YEAR and/or covariates).
+3) Optionally apply a "hindcast" macro projection policy for YEAR > baseline:
+   - population growth (Población/dens_pob)
+   - NOAA temperature anomaly delta (tmean)
+   - precipitation multipliers (pp) with region scaling
+   - simple multipliers for Minería/Infraestructura/area_agropec/Coca_ha
+4) One-hot encode Región and NOMBDEP, sanitize feature names, align to the training schema.
+5) Predict deforestation in hectares (model predicts log1p(Def_ha), API returns expm1(pred)).
+6) Optionally compute marginal effects (finite differences) for feature deltas.
+
+Endpoints
+---------
+POST /predict
+- Predict for a single district (UBIGEO baseline row) with optional overrides.
+
+POST /predict/aggregate
+- Predict for ALL districts (baseline-year slice), apply optional overrides globally,
+  and return totals aggregated by department or province.
+
+POST /marginal/department
+POST /marginal/province
+POST /marginal/district
+- Compute marginal effects (delta in predicted ha) by administrative level.
 
 Important interpretability note
 -------------------------------
-"Percent contribution" is computed as:
-
-  pct(group) = sum(|SHAP features in group|) / sum(|SHAP all features|)
-
-This is a "share of model reasoning" for the prediction, NOT a causal attribution.
+Marginal effects are finite-difference "what-if" deltas in predicted hectares
+for a specified feature change. They are not causal effects.
 
 Run
 ---
@@ -42,8 +57,11 @@ Server dataset for baseline defaults:
 Baseline policy:
 - DEFORESTATION_BASELINE_YEAR    (default: 2020)
 
-SHAP:
-- Requires 'shap' installed in the API environment.
+Hindcast tuning (optional overrides; defaults used if not set):
+- DEFORESTATION_HINDCAST_MINERIA_FACTOR
+- DEFORESTATION_HINDCAST_INFRA_FACTOR
+- DEFORESTATION_HINDCAST_AGROPEC_FACTOR
+- DEFORESTATION_HINDCAST_COCA_FACTOR
 
 """
 
@@ -62,11 +80,6 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-
-try:
-    import shap  # type: ignore
-except Exception:
-    shap = None  # type: ignore
 
 
 # -----------------------------
@@ -133,48 +146,21 @@ HINDCAST_PP_REGION_MULT = {
 }
 
 
-# Driver-group labels for output
-DRIVER_GROUPS = [
-    "Mining",
-    "Infrastructure",
-    "Agriculture",
-    "Forest",
-    "Hydrology",
-    "Climate",
-    "Socioeconomic",
-    "Geography/Admin",
-    "Other",
-]
-
-# Heuristic substring matching over sanitized feature names
-# (these should align with your data dictionary and feature engineering choices)
-_DRIVER_GROUP_PATTERNS: Dict[str, List[str]] = {
-    "Mining": ["Minería", "Mineria", "Dist_cat_Min"],
-    "Infrastructure": [
-        "Infraestructura",
-        "Dist_vías",
-        "Dist_vias",
-        "Dist_vias",
-        "vías",
-        "vias",
-    ],
-    "Agriculture": ["area_agropec", "Yuca_ha", "Coca_ha"],
-    "Forest": ["form_boscosa"],
-    "Hydrology": ["Río_lago_u_océano", "Rio_lago_u_oceano"],
-    "Climate": ["pp", "tmean", "hum_suelo"],
-    "Socioeconomic": [
-        "Población",
-        "Poblacion",
-        "dens_pob",
-        "Pobreza",
-        "IDH",
-        "Pbi_dist",
-        "Efic_gasto",
-    ],
-    "Geography/Admin": ["Región_", "Region_", "NOMBDEP_"],
+# Marginal-effects defaults
+DEFAULT_MARGINAL_DELTA = 1.0
+MARGINAL_EXCLUDE_COLS = {
+    'UBIGEO',
+    'YEAR',
+    'NOMBDEP',
+    'NOMBPROB',
+    'NOMBDIST',
+    'Def_ha',
 }
-
-
+MARGINAL_LEVEL_COLUMNS = {
+    "department": "NOMBDEP",
+    "province": "NOMBPROB",
+    "district": "NOMBDIST",
+}
 # -----------------------------
 # Utilities (consistent with training)
 # -----------------------------
@@ -220,40 +206,6 @@ def normalize_ubigeo(ubigeo: str) -> str:
     except Exception:
         return u
 
-
-def group_driver(feature_name: str) -> str:
-    for g, pats in _DRIVER_GROUP_PATTERNS.items():
-        for p in pats:
-            if p in feature_name:
-                return g
-    return "Other"
-
-
-def driver_contributions_from_shap(
-    feature_names: List[str], shap_values: np.ndarray
-) -> Dict[str, Any]:
-    """
-    Convert SHAP values to driver-group percentage contributions.
-    """
-    sv = np.asarray(shap_values).reshape(-1)
-    abs_sv = np.abs(sv)
-    denom = float(np.sum(abs_sv))
-    if denom <= 0.0 or not np.isfinite(denom):
-        return {
-            "method": "shap",
-            "denominator": "sum_abs_shap",
-            "groups": {g: 0.0 for g in DRIVER_GROUPS},
-        }
-
-    group_abs: Dict[str, float] = {g: 0.0 for g in DRIVER_GROUPS}
-    for name, aval in zip(feature_names, abs_sv.tolist()):
-        g = group_driver(str(name))
-        if g not in group_abs:
-            g = "Other"
-        group_abs[g] += float(aval)
-
-    out = {g: float(group_abs[g] / denom) for g in DRIVER_GROUPS}
-    return {"method": "shap", "denominator": "sum_abs_shap", "groups": out}
 
 
 # -----------------------------
@@ -348,7 +300,6 @@ def load_bundle() -> LoadedArtifacts:
 
 
 _artifacts: Optional[LoadedArtifacts] = None
-_shap_explainer: Any = None
 
 
 def artifacts() -> LoadedArtifacts:
@@ -356,30 +307,6 @@ def artifacts() -> LoadedArtifacts:
     if _artifacts is None:
         _artifacts = load_bundle()
     return _artifacts
-
-
-def ensure_shap_explainer() -> Any:
-    global _shap_explainer
-    if _shap_explainer is not None:
-        return _shap_explainer
-
-    if shap is None:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "shap_not_available",
-                "message": "SHAP is not installed in this environment; cannot compute contributions.",
-            },
-        )
-
-    try:
-        _shap_explainer = shap.TreeExplainer(artifacts().model)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"error": "shap_explainer_init_failed", "message": str(e)},
-        )
-    return _shap_explainer
 
 
 # -----------------------------
@@ -700,6 +627,183 @@ def apply_hindcast_df(
 
 
 # -----------------------------
+# Marginal effects helpers
+# -----------------------------
+
+
+def _is_excluded_feature(name: str) -> bool:
+    if name in MARGINAL_EXCLUDE_COLS:
+        return True
+    return str(name).strip().lower().startswith("regi")
+
+
+def _is_numeric_series(series: pd.Series) -> bool:
+    if pd.api.types.is_numeric_dtype(series):
+        return True
+    return pd.to_numeric(series, errors="coerce").notna().any()
+
+
+def _coerce_delta(value: Any) -> Optional[float]:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if not np.isfinite(out):
+        return None
+    return out
+
+
+def resolve_feature_deltas(
+    df: pd.DataFrame,
+    features: Optional[List[str]],
+    deltas: Dict[str, Any],
+    default_delta: float,
+) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    resolved: Dict[str, float] = {}
+    meta: Dict[str, Any] = {
+        "missing_features": [],
+        "excluded_features": [],
+        "non_numeric_features": [],
+        "invalid_deltas": [],
+    }
+
+    if features:
+        candidates = [str(f).strip() for f in features if f is not None and str(f).strip()]
+    elif deltas:
+        candidates = [str(f).strip() for f in deltas.keys() if f is not None and str(f).strip()]
+    else:
+        candidates = [str(c) for c in df.columns]
+
+    seen = set()
+    for feat in candidates:
+        if feat in seen:
+            continue
+        seen.add(feat)
+
+        if feat not in df.columns:
+            meta["missing_features"].append(feat)
+            continue
+        if _is_excluded_feature(feat):
+            meta["excluded_features"].append(feat)
+            continue
+        if not _is_numeric_series(df[feat]):
+            meta["non_numeric_features"].append(feat)
+            continue
+
+        delta = _coerce_delta(deltas.get(feat, default_delta))
+        if delta is None:
+            meta["invalid_deltas"].append(feat)
+            continue
+        resolved[feat] = delta
+
+    return resolved, meta
+
+
+def predict_ha_from_df(a: LoadedArtifacts, df: pd.DataFrame) -> np.ndarray:
+    X = build_X_from_df(df, feature_columns=a.feature_columns)
+    pred_log = a.model.predict(X)
+    return safe_expm1(pred_log).reshape(-1)
+
+
+def _group_key(val: Any) -> str:
+    if val is None or pd.isna(val):
+        return "NA"
+    return str(val)
+
+
+def compute_marginal_effects_by_group(
+    base: pd.DataFrame,
+    group_col: str,
+    feature_deltas: Dict[str, float],
+    artifacts_obj: LoadedArtifacts,
+) -> Dict[str, Any]:
+    pred_base = predict_ha_from_df(artifacts_obj, base)
+    base_with_pred = base.copy()
+    base_with_pred["_pred_ha"] = pred_base
+    base_group = (
+        base_with_pred.groupby(group_col, dropna=False)["_pred_ha"].sum()
+    )
+
+    results: Dict[str, Any] = {}
+    for key, base_val in base_group.items():
+        results[_group_key(key)] = {
+            "baseline_ha": float(base_val),
+            "effects": {},
+        }
+
+    for feat, delta in feature_deltas.items():
+        modified = base.copy()
+        modified[feat] = pd.to_numeric(modified[feat], errors="coerce") + float(delta)
+        pred_mod = predict_ha_from_df(artifacts_obj, modified)
+        modified["_pred_ha"] = pred_mod
+        mod_group = (
+            modified.groupby(group_col, dropna=False)["_pred_ha"].sum()
+        )
+
+        for key, base_val in base_group.items():
+            key_str = _group_key(key)
+            new_val = float(mod_group.get(key, 0.0))
+            delta_ha = float(new_val - float(base_val))
+            results[key_str]["effects"][feat] = {
+                "delta": float(delta),
+                "delta_ha": delta_ha,
+                "delta_per_unit": float(delta_ha / delta) if delta != 0 else None,
+                "new_ha": new_val,
+            }
+
+    return results
+
+
+def prepare_base_slice(
+    overrides: Dict[str, Any],
+    mode: Literal["hindcast", "baseline"],
+) -> Tuple[pd.DataFrame, int, Optional[Dict[str, Any]], List[str]]:
+    df = load_dataset()
+    base = df[df["YEAR"] == DEFAULT_BASELINE_YEAR].copy()
+    if base.empty:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "baseline_rows_not_found",
+                "message": "No baseline rows found for baseline year.",
+                "baseline_year": DEFAULT_BASELINE_YEAR,
+            },
+        )
+
+    override_keys = [
+        str(k).strip()
+        for k in (overrides or {}).keys()
+        if k is not None and str(k).strip() != ""
+    ]
+
+    for k, v in (overrides or {}).items():
+        key = str(k).strip()
+        if key == "" or key.upper() == "UBIGEO":
+            continue
+        base[key] = v
+
+    effective_year = DEFAULT_BASELINE_YEAR
+    if "YEAR" in base.columns:
+        try:
+            effective_year = int(float(base["YEAR"].iloc[0]))
+        except Exception:
+            effective_year = DEFAULT_BASELINE_YEAR
+
+    hindcast_meta = None
+    if mode == "hindcast":
+        base, hindcast_meta = apply_hindcast_df(
+            base, year=effective_year, baseline_year=DEFAULT_BASELINE_YEAR
+        )
+        for k, v in (overrides or {}).items():
+            key = str(k).strip()
+            if key == "" or key.upper() == "UBIGEO":
+                continue
+            base[key] = v
+
+    return base, effective_year, hindcast_meta, override_keys
+
+
+# -----------------------------
 # API models
 # -----------------------------
 
@@ -741,10 +845,7 @@ class PredictByUbigeoBaselineRequest(BaseModel):
         default="hindcast",
         description="hindcast applies 2021+ macro adjustments by default; baseline uses raw 2020 values + overrides only.",
     )
-    include_contributions: bool = Field(
-        default=True,
-        description="If true, compute grouped SHAP contribution percentages.",
-    )
+    # Kept minimal: marginal effects are available via separate endpoints.
 
 
 class PredictResponse(BaseModel):
@@ -752,7 +853,6 @@ class PredictResponse(BaseModel):
     model_name: str
     model_version: Optional[str] = None
     predictions_ha: List[float]
-    driver_contributions: Optional[Dict[str, Any]] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -769,6 +869,7 @@ class PredictAggregateRequest(BaseModel):
         default="hindcast",
         description="hindcast applies macro adjustments for YEAR > baseline; baseline uses raw baseline values + overrides only.",
     )
+    # Kept minimal: marginal effects are available via separate endpoints.
 
 
 class PredictAggregateResponse(BaseModel):
@@ -782,6 +883,40 @@ class PredictAggregateResponse(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+class MarginalEffectsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw feature overrides applied to all districts (e.g., YEAR, Miner¡a, pp, tmean).",
+    )
+    mode: Literal["hindcast", "baseline"] = Field(
+        default="hindcast",
+        description="hindcast applies macro adjustments for YEAR > baseline; baseline uses raw baseline values + overrides only.",
+    )
+    features: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of feature names to compute marginal effects for.",
+    )
+    deltas: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-feature additive deltas in native units (overrides default_delta).",
+    )
+    default_delta: float = Field(
+        default=DEFAULT_MARGINAL_DELTA,
+        description="Default additive delta for features not in deltas.",
+    )
+
+
+class MarginalEffectsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_name: str
+    model_version: Optional[str] = None
+    level: Literal["department", "province", "district"]
+    year: int
+    results: Dict[str, Any]
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 # -----------------------------
 # FastAPI app
 # -----------------------------
@@ -789,7 +924,7 @@ class PredictAggregateResponse(BaseModel):
 app = FastAPI(
     title="Deforestation XGBoost Prediction API",
     version="2.0.0",
-    description="Predict deforestation (ha) from baseline defaults + overrides, with grouped SHAP contributions.",
+    description="Predict deforestation (ha) from baseline defaults + overrides, with marginal-effects endpoints.",
 )
 
 
@@ -880,14 +1015,6 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
     pred_log = a.model.predict(X)
     pred_ha = float(safe_expm1(pred_log).reshape(-1)[0])
 
-    driver_contrib = None
-    if req.include_contributions:
-        explainer = ensure_shap_explainer()
-        shap_vals = explainer.shap_values(X)
-        driver_contrib = driver_contributions_from_shap(
-            list(X.columns), np.asarray(shap_vals).reshape(-1)
-        )
-
     ms = (time.perf_counter() - t0) * 1000.0
 
     return PredictResponse(
@@ -896,7 +1023,6 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
         if a.bundle_meta.get("version") is not None
         else None,
         predictions_ha=[pred_ha],
-        driver_contributions=driver_contrib,
         meta={
             "latency_ms": ms,
             "ubigeo": ub,
@@ -914,46 +1040,10 @@ def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
     t0 = time.perf_counter()
     a = artifacts()
 
-    df = load_dataset()
-    base = df[df["YEAR"] == DEFAULT_BASELINE_YEAR].copy()
-    if base.empty:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "baseline_rows_not_found",
-                "message": "No baseline rows found for baseline year.",
-                "baseline_year": DEFAULT_BASELINE_YEAR,
-            },
-        )
-
     overrides = dict(req.overrides or {})
-    override_keys = [str(k).strip() for k in overrides.keys() if k is not None and str(k).strip() != ""]
-
-    # Apply overrides to all rows (broadcast)
-    for k, v in overrides.items():
-        key = str(k).strip()
-        if key == "" or key.upper() == "UBIGEO":
-            continue
-        base[key] = v
-
-    effective_year = DEFAULT_BASELINE_YEAR
-    if "YEAR" in base.columns:
-        try:
-            effective_year = int(float(base["YEAR"].iloc[0]))
-        except Exception:
-            effective_year = DEFAULT_BASELINE_YEAR
-
-    hindcast_meta = None
-    if req.mode == "hindcast":
-        base, hindcast_meta = apply_hindcast_df(
-            base, year=effective_year, baseline_year=DEFAULT_BASELINE_YEAR
-        )
-        # Re-apply overrides to ensure they win
-        for k, v in overrides.items():
-            key = str(k).strip()
-            if key == "" or key.upper() == "UBIGEO":
-                continue
-            base[key] = v
+    base, effective_year, hindcast_meta, override_keys = prepare_base_slice(
+        overrides, req.mode
+    )
 
     # Build trained feature matrix
     X = build_X_from_df(base, feature_columns=a.feature_columns)
@@ -1034,3 +1124,81 @@ def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
             "hindcast_meta": hindcast_meta,
         },
     )
+
+
+def _marginal_effects_for_level(
+    req: MarginalEffectsRequest, level: Literal["department", "province", "district"]
+) -> MarginalEffectsResponse:
+    t0 = time.perf_counter()
+    a = artifacts()
+
+    overrides = dict(req.overrides or {})
+    base, effective_year, hindcast_meta, override_keys = prepare_base_slice(
+        overrides, req.mode
+    )
+
+    group_col = MARGINAL_LEVEL_COLUMNS[level]
+    if level == "province" and group_col not in base.columns and "NOMBPROV" in base.columns:
+        group_col = "NOMBPROV"
+    if group_col not in base.columns:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "group_column_missing",
+                "message": f"Dataset does not contain {group_col}.",
+            },
+        )
+
+    feature_deltas, feature_meta = resolve_feature_deltas(
+        base, req.features, req.deltas, req.default_delta
+    )
+    if not feature_deltas:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "no_valid_features",
+                "message": "No valid numeric features found for marginal effects.",
+                "feature_meta": feature_meta,
+            },
+        )
+
+    results = compute_marginal_effects_by_group(
+        base, group_col, feature_deltas, a
+    )
+    ms = (time.perf_counter() - t0) * 1000.0
+
+    return MarginalEffectsResponse(
+        model_name="xgb_timecv_v1",
+        model_version=str(a.bundle_meta.get("version"))
+        if a.bundle_meta.get("version") is not None
+        else None,
+        level=level,
+        year=effective_year,
+        results=results,
+        meta={
+            "latency_ms": ms,
+            "baseline_year": DEFAULT_BASELINE_YEAR,
+            "mode": req.mode,
+            "effective_year": effective_year,
+            "group_column": group_col,
+            "overrides_applied": override_keys,
+            "hindcast_meta": hindcast_meta,
+            "feature_deltas": feature_deltas,
+            "feature_meta": feature_meta,
+        },
+    )
+
+
+@app.post("/marginal/department", response_model=MarginalEffectsResponse)
+def marginal_department(req: MarginalEffectsRequest) -> MarginalEffectsResponse:
+    return _marginal_effects_for_level(req, "department")
+
+
+@app.post("/marginal/province", response_model=MarginalEffectsResponse)
+def marginal_province(req: MarginalEffectsRequest) -> MarginalEffectsResponse:
+    return _marginal_effects_for_level(req, "province")
+
+
+@app.post("/marginal/district", response_model=MarginalEffectsResponse)
+def marginal_district(req: MarginalEffectsRequest) -> MarginalEffectsResponse:
+    return _marginal_effects_for_level(req, "district")

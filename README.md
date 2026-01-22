@@ -1,6 +1,7 @@
 # Peru Deforestation Modeling (District-Year)
 XGBoost model + SHAP explainability + scenario analysis + 2021–2024 observed-loss validation + API + tree export/plots
 
+
 This repository builds and evaluates a district-year deforestation prediction pipeline for Peru. It includes:
 
 - **Training**: XGBoost regression trained on `log1p(Def_ha)` (predicts hectares after `expm1`).
@@ -10,7 +11,7 @@ This repository builds and evaluates a district-year deforestation prediction pi
 - **Observed forest loss**: curated district loss (2001–2024) and remaining forest 2024.
 - **Hindcast 2021–2024**: scenario-based evaluation comparing model projections vs observed loss.
 - **Quarto report**: renders a single HTML report including metrics and all images.
-- **API**: serves deforestation predictions + grouped SHAP contribution percentages for decision support.
+- **API**: serves deforestation predictions + marginal effects endpoints for feature deltas.
 
 ---
 
@@ -46,7 +47,7 @@ This repository builds and evaluates a district-year deforestation prediction pi
 - `src/deforestation/run_scenarios.py` — baseline-year scenarios + plots + bubble maps
 - `src/deforestation/analysis/forest_loss_trends.py` — plots observed loss trends from curated CSV
 - `src/deforestation/analysis/hindcast_2021_2024.py` — scenario-based hindcast vs observed 2021–2024
-- `src/deforestation/api.py` — prediction API with grouped SHAP contributions
+- `src/deforestation/api.py` — prediction API with marginal effects endpoints
 
 ---
 
@@ -286,29 +287,14 @@ The report includes:
 
 ---
 
-## API (prediction + grouped SHAP “percent contributions”)
+## API (prediction + marginal effects)
 
 Script:
 - `src/deforestation/api.py`
 
 Purpose:
-Serve deforestation predictions (ha) plus “percent contribution” by driver group based on SHAP.
-
-**Driver groups (current):**
-- Mining
-- Infrastructure
-- Agriculture
-- Forest
-- Hydrology
-- Climate
-- Socioeconomic
-- Geography/Admin
-- Other
-
-Percent contribution definition:
-- `pct(group) = sum(|SHAP features in group|) / sum(|SHAP all features|)`
-
-This represents **share of model reasoning**, not causal attribution.
+Serve deforestation predictions (ha) plus marginal-effects endpoints for feature deltas.
+These are model what-if impacts, not causal effects.
 
 ### Run the API
 From repo root:
@@ -327,65 +313,145 @@ The API is designed so the user does NOT need to provide every feature. The serv
 - applies your numeric overrides (e.g., set YEAR=2024 and adjust Minería, Pobreza, pp, tmean, etc.)
 - **if mode is `hindcast` (default), applies macro adjustments for YEAR > baseline**
 - predicts hectares
-- returns grouped SHAP contributions
 
-#### Request parameters
+Examples below use UBIGEO `100403` (HUANUCO / HUACAYBAMBA / COCHABAMBA, YEAR 2020) from
+`deforestation_dataset_PERU_imputed_coca.csv`. Example values from that row:
+`Coca_ha=8.136319`, `Infraestructura=0.81`, `Minería=0.0`, `pp=2307.476`, `tmean=15.78479`.
+
+#### `/predict` request parameters
 - `ubigeo` (required): district code (6-digit)
 - `overrides` (optional): any feature overrides (YEAR, Minería, Pobreza, pp, tmean, etc.)
 - `mode` (optional): `"hindcast"` (default) or `"baseline"`
-- `include_contributions` (optional): default `true`
 
 #### Example request (hindcast for 2024)
 ```
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{
-    "ubigeo": "010101",
-    "overrides": {
-      "YEAR": 2024
+  -d "{
+    \"ubigeo\": \"100403\",
+    \"overrides\": {
+      \"YEAR\": 2024
     },
-    "mode": "hindcast",
-    "include_contributions": true
-  }'
+    \"mode\": \"hindcast\"
+  }"
 ```
 
 #### Example request (baseline mode)
 ```
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{
-    "ubigeo": "010101",
-    "overrides": {
-      "YEAR": 2024,
-      "Minería": 1.10,
-      "Infraestructura": 1.02,
-      "area_agropec": 1.01,
-      "pp": 0.97,
-      "tmean": 0.26
+  -d "{
+    \"ubigeo\": \"100403\",
+    \"overrides\": {
+      \"YEAR\": 2020,
+      \"Coca_ha\": 8.136319,
+      \"Infraestructura\": 0.81,
+      \"Minería\": 0.0,
+      \"pp\": 2307.476,
+      \"tmean\": 15.78479
     },
-    "mode": "baseline",
-    "include_contributions": true
-  }'
+    \"mode\": \"baseline\"
+  }"
 ```
+
+### Aggregate predictions (departments or provinces)
+Endpoint:
+- `POST /predict/aggregate`
+
+What it does:
+- uses the full baseline slice (all districts at `DEFORESTATION_BASELINE_YEAR`)
+- applies `overrides` globally to all districts
+- applies `hindcast` macro adjustments if enabled (default) and `YEAR > baseline`
+- predicts hectares for all districts and aggregates totals
+
+#### `/predict/aggregate` request parameters
+- `group_by` (required): `"department"` or `"province"`
+- `overrides` (optional): global overrides applied to all districts (e.g., `{"YEAR": 2024}`)
+- `mode` (optional): `"hindcast"` (default) or `"baseline"`
+
+#### Example request: total predicted deforestation by department (hindcast 2024)
+```
+curl -X POST http://localhost:8000/predict/aggregate \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"group_by\": \"department\",
+    \"overrides\": { \"YEAR\": 2024 },
+    \"mode\": \"hindcast\"
+  }"
+```
+
+#### Example request: total predicted deforestation by province (nested by department)
+Response structure for `group_by="province"` is nested:
+```
+{
+  "HUANUCO": {
+    "HUACAYBAMBA": { "pred_ha": 1234.56 },
+    "HUAMALIES": { "pred_ha": 456.78 }
+  }
+}
+```
+
+Request:
+```
+curl -X POST http://localhost:8000/predict/aggregate \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"group_by\": \"province\",
+    \"overrides\": { \"YEAR\": 2024 },
+    \"mode\": \"hindcast\"
+  }"
+```
+
+### Marginal effects by admin level
+Endpoints:
+- `POST /marginal/department` (NOMBDEP)
+- `POST /marginal/province` (NOMBPROB)
+- `POST /marginal/district` (NOMBDIST)
+
+These compute finite-difference deltas in predicted hectares for feature changes.
+
+#### Request parameters
+- `overrides` (optional): global overrides (e.g., `{"YEAR": 2024}`)
+- `mode` (optional): `"hindcast"` (default) or `"baseline"`
+- `features` (optional): list of feature names to compute
+- `deltas` (optional): per-feature additive deltas in native units
+- `default_delta` (optional): default additive delta for unspecified features (default 1.0)
+
+#### Example request: marginal effects by department
+```
+curl -X POST http://localhost:8000/marginal/department \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"overrides\": { \"YEAR\": 2024 },
+    \"features\": [\"Coca_ha\", \"Infraestructura\"],
+    \"deltas\": { \"Coca_ha\": 10, \"Infraestructura\": 0.1 },
+    \"mode\": \"hindcast\"
+  }"
+```
+
+Response includes, per group:
+- `baseline_ha`
+- `effects[feature].delta_ha` (change in predicted ha)
+- `effects[feature].delta_per_unit` (ha per unit)
+- `effects[feature].new_ha` (predicted ha after delta)
 
 Notes:
 - `hindcast` applies the same macro-style adjustments used in `hindcast_2021_2024.py` (population growth, NOAA temperature delta, precipitation multipliers by region, and simple multipliers for mining/infrastructure/agriculture/coca).
 - `baseline` uses raw baseline values + overrides only (no macro adjustments).
-- **Years beyond 2024:** the current API has built-in assumptions for 2021–2024 only. For later years it will fall back to neutral factors unless you override values.
-  - **Recommended (next step):** move hindcast assumptions to a YAML file (e.g., `scenarios/hindcast_assumptions.yaml`) and use a **carry-forward policy** so that if a year is missing, the API uses the last available year’s factors instead of failing.
+- **Years beyond 2024:** the current API has built-in assumptions for 2021-2024 only. For later years it will fall back to neutral factors unless you override values.
+  - **Recommended (next step):** move hindcast assumptions to a YAML file (e.g., `scenarios/hindcast_assumptions.yaml`) and use a **carry-forward policy** so that if a year is missing, the API uses the last available year's factors instead of failing.
 - The response includes:
-  - `predictions_ha`: predicted deforestation in hectares
-  - `driver_contributions`: grouped SHAP percentages
+  - `predictions_ha`: predicted deforestation in hectares (for `/predict`)
+  - `total_pred_ha`: total predicted hectares across all districts (for `/predict/aggregate`)
   - `meta` including overrides + hindcast adjustments applied
 
 ### API vs hindcast scripts
-- The **hindcast scripts** are batch evaluation comparing model vs observed 2021–2024 across all districts.
-- The **API** is for interactive, per-district “what-if” predictions with explainability.
+- The **hindcast scripts** are batch evaluation comparing model vs observed 2021-2024 across all districts.
+- The **API** is for interactive, per-district and aggregated "what-if" predictions with marginal effects.
 
-The API now supports **hindcast mode by default**, which aligns better with post‑2020 usage.
+The API now supports **hindcast mode by default**, which aligns better with post-2020 usage.
 
 ---
-
 ## Reproducibility checklist
 When publishing results, record:
 - bundle path (`models/.../bundle.joblib`)
