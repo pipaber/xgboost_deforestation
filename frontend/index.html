@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>What If Peru? - Policy Dashboard</title>
+        <link rel="stylesheet" href="styles.css" />
+        <!-- Chart.js from CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <!-- D3.js from CDN -->
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+    </head>
+    <body>
+        <div
+            class="sidebar-overlay"
+            id="sidebar-overlay"
+            aria-hidden="true"
+        ></div>
+        <div class="dashboard">
+            <!-- Sidebar: Controls -->
+            <aside class="sidebar">
+                <div class="brand">
+                    <h1>What If Peru?</h1>
+                    <p>Simulador de Pol&iacute;ticas Nacionales</p>
+                </div>
+
+                <div class="scenario">
+                    <h2>Escenario</h2>
+                    <div class="field">
+                        <label for="mode-select">Modo</label>
+                        <select id="mode-select">
+                            <option value="hindcast" selected>
+                                Hindcast (ajustes macro)
+                            </option>
+                            <option value="baseline">
+                                Baseline (sin ajustes)
+                            </option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="year-input">A&ntilde;o</label>
+                        <input
+                            type="number"
+                            id="year-input"
+                            min="2020"
+                            max="2024"
+                            value="2024"
+                        />
+                    </div>
+                    <p class="hint">
+                        Valores en unidades originales (deltas sobre la base).
+                    </p>
+                </div>
+
+                <div class="controls">
+                    <h2>Policy Levers</h2>
+                    <p class="subtitle">Ajuste las prioridades nacionales</p>
+
+                    <div class="slider-group">
+                        <label>Miner&iacute;a (ha)</label>
+                        <div class="slider-row">
+                            <input
+                                type="range"
+                                min="-2000"
+                                max="2000"
+                                step="50"
+                                value="0"
+                                data-driver="Mining"
+                            />
+                            <span class="value">0 ha</span>
+                        </div>
+                    </div>
+
+                    <div class="slider-group">
+                        <label>Agricultura (ha)</label>
+                        <div class="slider-row">
+                            <input
+                                type="range"
+                                min="-20000"
+                                max="20000"
+                                step="500"
+                                value="0"
+                                data-driver="Agriculture"
+                            />
+                            <span class="value">0 ha</span>
+                        </div>
+                    </div>
+
+                    <div class="slider-group">
+                        <label>Infraestructura (&iacute;ndice)</label>
+                        <div class="slider-row">
+                            <input
+                                type="range"
+                                min="-500"
+                                max="500"
+                                step="10"
+                                value="0"
+                                data-driver="Infrastructure"
+                            />
+                            <span class="value">0</span>
+                        </div>
+                    </div>
+
+                    <div class="slider-group">
+                        <label>Clima (delta &deg;C)</label>
+                        <div class="slider-row">
+                            <input
+                                type="range"
+                                min="-2"
+                                max="2"
+                                step="0.1"
+                                value="0"
+                                data-driver="Climate"
+                            />
+                            <span class="value">0.0 &deg;C</span>
+                        </div>
+                    </div>
+
+                    <div class="slider-group">
+                        <label>Poblaci&oacute;n (personas)</label>
+                        <div class="slider-row">
+                            <input
+                                type="range"
+                                min="-20000"
+                                max="20000"
+                                step="500"
+                                value="0"
+                                data-driver="Socioeconomic"
+                            />
+                            <span class="value">0</span>
+                        </div>
+                    </div>
+
+                    <div class="reset-container">
+                        <button id="reset-btn">Restablecer Valores</button>
+                    </div>
+                </div>
+
+                <div class="debug-info">
+                    <small>Model: XGBoost TimeCV v1</small><br />
+                    <small id="scenario-meta"
+                        >Modo: hindcast &middot; A&ntilde;o: 2024</small
+                    >
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="content">
+                <button
+                    class="sidebar-toggle"
+                    id="sidebar-toggle"
+                    type="button"
+                    aria-label="Abrir controles"
+                >
+                    Controles
+                </button>
+
+                <!-- Top Stats Cards -->
+                <section class="stats-grid">
+                    <div class="card stat-card total">
+                        <h3>
+                            Deforestaci&oacute;n Total (<span id="year-label"
+                                >2024</span
+                            >)
+                        </h3>
+                        <div class="big-number" id="total-ha">Loading...</div>
+                        <div class="delta-badge" id="total-delta">+0 ha</div>
+                    </div>
+
+                    <div class="card stat-card bau">
+                        <h3>Business As Usual</h3>
+                        <div class="big-number secondary" id="bau-ha">...</div>
+                        <small>Proyecci&oacute;n sin cambios</small>
+                    </div>
+                </section>
+
+                <!-- Main Charts Area -->
+                <section class="charts-grid">
+                    <!-- Left: Contributions -->
+                    <div class="card chart-card">
+                        <h3 id="contrib-title">Contribuciones por causa</h3>
+                        <p class="chart-desc" id="contrib-subtitle">
+                            Porcentaje del cambio total (hover para ver ha).
+                        </p>
+                        <div class="chart-controls">
+                            <div class="field">
+                                <label for="level-select">Nivel</label>
+                                <select id="level-select">
+                                    <option value="department" selected>
+                                        Departamento
+                                    </option>
+                                    <option value="province">Provincia</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="group-select" id="group-label"
+                                    >Departamento</label
+                                >
+                                <select id="group-select">
+                                    <option value="">Cargando...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="chart-note" id="contrib-empty">
+                            Ajuste los sliders para calcular contribuciones.
+                        </p>
+                        <div class="chart-container">
+                            <canvas id="marginalChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Right: Department Breakdown -->
+                    <div class="card chart-card">
+                        <h3>Impacto Regional</h3>
+                        <p class="chart-desc" id="region-desc">
+                            Deforestaci&oacute;n proyectada por Departamento
+                        </p>
+                        <div class="chart-container">
+                            <canvas id="deptChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Choropleth Map -->
+                    <div class="card chart-card map-card">
+                        <h3>Mapa de predicci&oacute;n</h3>
+                        <p class="chart-desc">
+                            Se actualiza con el nivel seleccionado.
+                        </p>
+                        <div class="map-container" id="map-container">
+                            <div class="map-placeholder" id="map-placeholder">
+                                Agregue GeoJSON en frontend/data para ver el
+                                mapa.
+                            </div>
+                        </div>
+                        <div class="map-legend" id="map-legend"></div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <div class="map-tooltip" id="map-tooltip"></div>
+        <script src="app.js"></script>
+    </body>
+</html>

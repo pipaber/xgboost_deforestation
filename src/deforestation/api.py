@@ -129,9 +129,7 @@ if CORS_ORIGINS_ENV:
         CORS_ALLOW_ORIGINS = ["*"]
     else:
         CORS_ALLOW_ORIGINS = [
-            origin.strip()
-            for origin in CORS_ORIGINS_ENV.split(",")
-            if origin.strip()
+            origin.strip() for origin in CORS_ORIGINS_ENV.split(",") if origin.strip()
         ]
     CORS_ALLOW_ORIGIN_REGEX: str | None = None
 else:
@@ -187,6 +185,16 @@ MARGINAL_LEVEL_COLUMNS = {
     "department": "NOMBDEP",
     "province": "NOMBPROB",
     "district": "NOMBDIST",
+}
+NONNEGATIVE_DELTA_COLUMNS = {
+    "Población",
+    "Poblacion",
+    "dens_pob",
+    "area_agropec",
+    "Coca_ha",
+    "Minería",
+    "Infraestructura",
+    "pp",
 }
 # -----------------------------
 # Utilities (consistent with training)
@@ -487,12 +495,16 @@ def apply_hindcast(
     year: int,
     baseline_year: int,
     locked: Optional[List[str]] = None,
+    factors: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Apply hindcast-style macro adjustments to a raw feature dict.
     Skips any keys present in `locked` (user overrides win).
     """
     locked_set = {str(k) for k in (locked or []) if k is not None}
+
+    # Use provided factors or internal defaults
+    f_overrides = factors or {}
 
     meta: Dict[str, Any] = {
         "mode": "hindcast",
@@ -542,6 +554,12 @@ def apply_hindcast(
     factor = 1.0
     for y in range(2021, year + 1):
         factor *= HINDCAST_POP_GROWTH.get(y, 1.0)
+    pop_override = f_overrides.get("population_factor")
+    if pop_override is not None:
+        try:
+            factor = float(pop_override)
+        except Exception:
+            pass
     meta["factors"]["population_factor"] = float(factor)
     for c in ["Población", "Poblacion", "dens_pob"]:
         _mul_if_unlocked(c, factor)
@@ -549,8 +567,16 @@ def apply_hindcast(
     # Temperature anomaly (NOAA delta vs baseline year)
     base_anom = HINDCAST_NOAA_ANOMALY.get(baseline_year, 1.02)
     year_anom = HINDCAST_NOAA_ANOMALY.get(year)
-    if year_anom is not None:
+    override_delta = f_overrides.get("tmean_delta")
+    delta: Optional[float] = None
+    if override_delta is not None:
+        try:
+            delta = float(override_delta)
+        except Exception:
+            delta = None
+    if delta is None and year_anom is not None:
         delta = float(year_anom - base_anom)
+    if delta is not None:
         meta["factors"]["tmean_delta"] = float(delta)
         _add_if_unlocked("tmean", delta)
 
@@ -563,22 +589,32 @@ def apply_hindcast(
     _mul_if_unlocked("pp", pp_factor * region_mult)
 
     # Simple multipliers (vs baseline)
-    meta["factors"]["mineria_factor"] = float(HINDCAST_MINERIA_FACTOR)
-    meta["factors"]["infra_factor"] = float(HINDCAST_INFRA_FACTOR)
-    meta["factors"]["agropec_factor"] = float(HINDCAST_AGROPEC_FACTOR)
-    meta["factors"]["coca_factor"] = float(HINDCAST_COCA_FACTOR)
+    # Allow overriding defaults via f_overrides
 
-    _mul_if_unlocked("Minería", HINDCAST_MINERIA_FACTOR)
-    _mul_if_unlocked("Infraestructura", HINDCAST_INFRA_FACTOR)
-    _mul_if_unlocked("area_agropec", HINDCAST_AGROPEC_FACTOR)
-    _mul_if_unlocked("Coca_ha", HINDCAST_COCA_FACTOR)
+    fac_min = float(f_overrides.get("mineria_factor", HINDCAST_MINERIA_FACTOR))
+    fac_inf = float(f_overrides.get("infra_factor", HINDCAST_INFRA_FACTOR))
+    fac_agr = float(f_overrides.get("agropec_factor", HINDCAST_AGROPEC_FACTOR))
+    fac_coca = float(f_overrides.get("coca_factor", HINDCAST_COCA_FACTOR))
+
+    meta["factors"]["mineria_factor"] = fac_min
+    meta["factors"]["infra_factor"] = fac_inf
+    meta["factors"]["agropec_factor"] = fac_agr
+    meta["factors"]["coca_factor"] = fac_coca
+
+    _mul_if_unlocked("Minería", fac_min)
+    _mul_if_unlocked("Infraestructura", fac_inf)
+    _mul_if_unlocked("area_agropec", fac_agr)
+    _mul_if_unlocked("Coca_ha", fac_coca)
 
     meta["active"] = True
     return raw, meta
 
 
 def apply_hindcast_df(
-    df: pd.DataFrame, year: int, baseline_year: int
+    df: pd.DataFrame,
+    year: int,
+    baseline_year: int,
+    factors: Optional[Dict[str, float]] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Apply hindcast-style macro adjustments to a DataFrame (vectorized).
@@ -596,11 +632,18 @@ def apply_hindcast_df(
         return df, meta
 
     out = df.copy()
+    f_overrides = factors or {}
 
     # Population growth (compound from 2021..year)
     factor = 1.0
     for y in range(2021, year + 1):
         factor *= HINDCAST_POP_GROWTH.get(y, 1.0)
+    pop_override = f_overrides.get("population_factor")
+    if pop_override is not None:
+        try:
+            factor = float(pop_override)
+        except Exception:
+            pass
     meta["factors"]["population_factor"] = float(factor)
     for c in ["Población", "Poblacion", "dens_pob"]:
         if c in out.columns:
@@ -610,11 +653,21 @@ def apply_hindcast_df(
     # Temperature anomaly (NOAA delta vs baseline year)
     base_anom = HINDCAST_NOAA_ANOMALY.get(baseline_year, 1.02)
     year_anom = HINDCAST_NOAA_ANOMALY.get(year)
-    if year_anom is not None and "tmean" in out.columns:
+    override_delta = f_overrides.get("tmean_delta")
+    delta = None
+    if override_delta is not None:
+        try:
+            delta = float(override_delta)
+        except Exception:
+            delta = None
+    if delta is None and year_anom is not None:
         delta = float(year_anom - base_anom)
+    if delta is not None and "tmean" in out.columns:
         meta["factors"]["tmean_delta"] = float(delta)
         out["tmean"] = pd.to_numeric(out["tmean"], errors="coerce") + delta
         meta["applied_columns"].append("tmean")
+    elif delta is not None:
+        meta["factors"]["tmean_delta"] = float(delta)
 
     # Precipitation factor (year + region scaling)
     if "pp" in out.columns:
@@ -633,22 +686,64 @@ def apply_hindcast_df(
         meta["applied_columns"].append("pp")
 
     # Simple multipliers
-    meta["factors"]["mineria_factor"] = float(HINDCAST_MINERIA_FACTOR)
-    meta["factors"]["infra_factor"] = float(HINDCAST_INFRA_FACTOR)
-    meta["factors"]["agropec_factor"] = float(HINDCAST_AGROPEC_FACTOR)
-    meta["factors"]["coca_factor"] = float(HINDCAST_COCA_FACTOR)
+
+    fac_min = float(f_overrides.get("mineria_factor", HINDCAST_MINERIA_FACTOR))
+    fac_inf = float(f_overrides.get("infra_factor", HINDCAST_INFRA_FACTOR))
+    fac_agr = float(f_overrides.get("agropec_factor", HINDCAST_AGROPEC_FACTOR))
+    fac_coca = float(f_overrides.get("coca_factor", HINDCAST_COCA_FACTOR))
+
+    meta["factors"]["mineria_factor"] = fac_min
+    meta["factors"]["infra_factor"] = fac_inf
+    meta["factors"]["agropec_factor"] = fac_agr
+    meta["factors"]["coca_factor"] = fac_coca
 
     for col, factor in [
-        ("Minería", HINDCAST_MINERIA_FACTOR),
-        ("Infraestructura", HINDCAST_INFRA_FACTOR),
-        ("area_agropec", HINDCAST_AGROPEC_FACTOR),
-        ("Coca_ha", HINDCAST_COCA_FACTOR),
+        ("Minería", fac_min),
+        ("Infraestructura", fac_inf),
+        ("area_agropec", fac_agr),
+        ("Coca_ha", fac_coca),
     ]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce") * float(factor)
             meta["applied_columns"].append(col)
 
     meta["active"] = True
+    return out, meta
+
+
+def apply_feature_deltas_df(
+    df: pd.DataFrame, deltas: Optional[Dict[str, Any]]
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Apply additive deltas to feature columns for scenario adjustments.
+    """
+    meta: Dict[str, Any] = {"applied": [], "missing": [], "invalid": []}
+    if not deltas:
+        return df, meta
+
+    out = df.copy()
+    for k, v in (deltas or {}).items():
+        if k is None:
+            continue
+        key = str(k).strip()
+        if key == "":
+            continue
+        if key not in out.columns:
+            meta["missing"].append(key)
+            continue
+
+        delta = _coerce_delta(v)
+        if delta is None:
+            meta["invalid"].append(key)
+            continue
+
+        series = pd.to_numeric(out[key], errors="coerce")
+        updated = series + float(delta)
+        if key in NONNEGATIVE_DELTA_COLUMNS:
+            updated = updated.clip(lower=0)
+        out[key] = updated
+        meta["applied"].append(key)
+
     return out, meta
 
 
@@ -780,10 +875,23 @@ def compute_marginal_effects_by_group(
     return results
 
 
+def _unique_values(df: pd.DataFrame, column: str) -> List[str]:
+    if column not in df.columns:
+        return []
+    values = []
+    for v in df[column].dropna().tolist():
+        s = str(v).strip()
+        if s:
+            values.append(s)
+    return sorted(set(values))
+
+
 def prepare_base_slice(
     overrides: Dict[str, Any],
     mode: Literal["hindcast", "baseline"],
-) -> Tuple[pd.DataFrame, int, Optional[Dict[str, Any]], List[str]]:
+    hindcast_factors: Optional[Dict[str, float]] = None,
+    feature_deltas: Optional[Dict[str, Any]] = None,
+) -> Tuple[pd.DataFrame, int, Optional[Dict[str, Any]], List[str], Dict[str, Any]]:
     df = load_dataset()
     base = df[df["YEAR"] == DEFAULT_BASELINE_YEAR].copy()
     if base.empty:
@@ -818,7 +926,10 @@ def prepare_base_slice(
     hindcast_meta = None
     if mode == "hindcast":
         base, hindcast_meta = apply_hindcast_df(
-            base, year=effective_year, baseline_year=DEFAULT_BASELINE_YEAR
+            base,
+            year=effective_year,
+            baseline_year=DEFAULT_BASELINE_YEAR,
+            factors=hindcast_factors,
         )
         for k, v in (overrides or {}).items():
             key = str(k).strip()
@@ -826,7 +937,11 @@ def prepare_base_slice(
                 continue
             base[key] = v
 
-    return base, effective_year, hindcast_meta, override_keys
+    deltas_meta = {}
+    if feature_deltas:
+        base, deltas_meta = apply_feature_deltas_df(base, feature_deltas)
+
+    return base, effective_year, hindcast_meta, override_keys, deltas_meta
 
 
 # -----------------------------
@@ -871,6 +986,14 @@ class PredictByUbigeoBaselineRequest(BaseModel):
         default="hindcast",
         description="hindcast applies 2021+ macro adjustments by default; baseline uses raw 2020 values + overrides only.",
     )
+    hindcast_factors: Optional[Dict[str, float]] = Field(
+        default=None,
+        description=(
+            "Optional overrides for hindcast factors "
+            "(mineria_factor, infra_factor, agropec_factor, coca_factor, "
+            "population_factor, tmean_delta)."
+        ),
+    )
     # Kept minimal: marginal effects are available via separate endpoints.
 
 
@@ -898,6 +1021,18 @@ class PredictAggregateRequest(BaseModel):
     mode: Literal["hindcast", "baseline"] = Field(
         default="hindcast",
         description="hindcast applies macro adjustments for YEAR > baseline; baseline uses raw baseline values + overrides only.",
+    )
+    hindcast_factors: Optional[Dict[str, float]] = Field(
+        default=None,
+        description=(
+            "Optional overrides for hindcast factors "
+            "(mineria_factor, infra_factor, agropec_factor, coca_factor, "
+            "population_factor, tmean_delta)."
+        ),
+    )
+    feature_deltas: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Per-feature additive deltas in native units.",
     )
     # Kept minimal: marginal effects are available via separate endpoints.
 
@@ -927,6 +1062,14 @@ class MarginalEffectsRequest(BaseModel):
         default=None,
         description="Optional list of feature names to compute marginal effects for.",
     )
+    hindcast_factors: Optional[Dict[str, float]] = Field(
+        default=None,
+        description=(
+            "Optional overrides for hindcast factors "
+            "(mineria_factor, infra_factor, agropec_factor, coca_factor, "
+            "population_factor, tmean_delta)."
+        ),
+    )
     deltas: Dict[str, float] = Field(
         default_factory=dict,
         description="Per-feature additive deltas in native units (overrides default_delta).",
@@ -945,6 +1088,17 @@ class MarginalEffectsResponse(BaseModel):
     year: int
     results: Dict[str, Any]
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DepartmentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    departments: List[str]
+
+
+class ProvinceListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    department: Optional[str] = None
+    provinces: List[str]
 
 
 # -----------------------------
@@ -1018,6 +1172,45 @@ def health() -> HealthResponse:
     )
 
 
+@app.get("/meta/departments", response_model=DepartmentListResponse)
+def meta_departments() -> DepartmentListResponse:
+    df = load_dataset()
+    if "NOMBDEP" not in df.columns:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "department_column_missing",
+                "message": "Dataset does not contain NOMBDEP.",
+            },
+        )
+    return DepartmentListResponse(departments=_unique_values(df, "NOMBDEP"))
+
+
+@app.get("/meta/provinces", response_model=ProvinceListResponse)
+def meta_provinces(department: Optional[str] = None) -> ProvinceListResponse:
+    df = load_dataset()
+    prov_col = None
+    if "NOMBPROV" in df.columns:
+        prov_col = "NOMBPROV"
+    elif "NOMBPROB" in df.columns:
+        prov_col = "NOMBPROB"
+    if prov_col is None:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "province_column_missing",
+                "message": "Dataset does not contain NOMBPROV or NOMBPROB.",
+            },
+        )
+    if department:
+        sub = df[df["NOMBDEP"] == department]
+    else:
+        sub = df
+    return ProvinceListResponse(
+        department=department, provinces=_unique_values(sub, prov_col)
+    )
+
+
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
     t0 = time.perf_counter()
@@ -1045,6 +1238,7 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
             year=effective_year,
             baseline_year=DEFAULT_BASELINE_YEAR,
             locked=override_meta.get("overrides_applied") or [],
+            factors=req.hindcast_factors,
         )
 
     # Build trained feature matrix
@@ -1081,8 +1275,8 @@ def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
     a = artifacts()
 
     overrides = dict(req.overrides or {})
-    base, effective_year, hindcast_meta, override_keys = prepare_base_slice(
-        overrides, req.mode
+    base, effective_year, hindcast_meta, override_keys, deltas_meta = prepare_base_slice(
+        overrides, req.mode, req.hindcast_factors, req.feature_deltas
     )
 
     # Build trained feature matrix
@@ -1162,6 +1356,7 @@ def predict_aggregate(req: PredictAggregateRequest) -> PredictAggregateResponse:
             "group_column": group_col,
             "overrides_applied": override_keys,
             "hindcast_meta": hindcast_meta,
+            "feature_deltas_meta": deltas_meta,
         },
     )
 
@@ -1173,8 +1368,8 @@ def _marginal_effects_for_level(
     a = artifacts()
 
     overrides = dict(req.overrides or {})
-    base, effective_year, hindcast_meta, override_keys = prepare_base_slice(
-        overrides, req.mode
+    base, effective_year, hindcast_meta, override_keys, _ = prepare_base_slice(
+        overrides, req.mode, req.hindcast_factors
     )
 
     group_col = MARGINAL_LEVEL_COLUMNS[level]

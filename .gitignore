@@ -92,6 +92,17 @@ reports/quarto/*.quarto_ipynb
 # PDFs: ignore by default (can be added via Git LFS if needed)
 *.pdf
 
+# --------------------------------------------
+# Frontend artifacts
+# --------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# GeoJSON / TopoJSON for choropleth maps (track with Git LFS if needed)
+frontend/data/*.geojson
+frontend/data/*.topojson
+
 # Shapefile bundles and other large geodata: ignore by default
 *.zip
 *.shp

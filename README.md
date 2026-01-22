@@ -452,6 +452,38 @@ Notes:
 The API now supports **hindcast mode by default**, which aligns better with post-2020 usage.
 
 ---
+
+## Frontend dashboard (vanilla + D3)
+
+The frontend lives in `frontend/` and uses the API for predictions and marginal effects.
+
+### Run locally
+Terminal 1 (API):
+```
+uv run uvicorn deforestation.api:app --host 0.0.0.0 --port 8000
+```
+
+Terminal 2 (static frontend):
+```
+cd frontend
+uv run python -m http.server 5173
+```
+
+Open `http://localhost:5173`.
+
+### Map data (choropleth)
+The D3 choropleth expects GeoJSON files placed under `frontend/data/`:
+- `frontend/data/peru_departments.geojson` with a `NOMBDEP` property
+- `frontend/data/peru_provinces.geojson` with a `NOMBPROB` property
+
+If these files are missing, the map shows a placeholder message.
+
+Generate GeoJSON from the INEI districts shapefile:
+```
+uv run python scripts/make_geojson.py --districts-zip DISTRITOS_inei_geogpsperu_suyopomalia.zip
+```
+
+---
 ## Reproducibility checklist
 When publishing results, record:
 - bundle path (`models/.../bundle.joblib`)
