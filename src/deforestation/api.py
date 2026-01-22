@@ -57,6 +57,9 @@ Server dataset for baseline defaults:
 Baseline policy:
 - DEFORESTATION_BASELINE_YEAR    (default: 2020)
 
+CORS:
+- DEFORESTATION_CORS_ORIGINS     (default: allow localhost/127.0.0.1/[::1] on any port; set to * to allow all)
+
 Hindcast tuning (optional overrides; defaults used if not set):
 - DEFORESTATION_HINDCAST_MINERIA_FACTOR
 - DEFORESTATION_HINDCAST_INFRA_FACTOR
@@ -78,6 +81,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -110,6 +114,29 @@ DATASET_PATH = Path(
     or str(DEFAULT_DATASET_PATH)
 )
 DATASET_SEP = DEFAULT_DATASET_SEP
+
+# -----------------------------
+# CORS
+# -----------------------------
+
+# Default: allow local dev frontends (localhost/127.0.0.1/[::1]) on any port.
+# Override with a comma-separated list via `DEFORESTATION_CORS_ORIGINS`, or set to
+# `*` to allow all origins.
+DEFAULT_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+CORS_ORIGINS_ENV = os.environ.get("DEFORESTATION_CORS_ORIGINS", "").strip()
+if CORS_ORIGINS_ENV:
+    if CORS_ORIGINS_ENV == "*":
+        CORS_ALLOW_ORIGINS = ["*"]
+    else:
+        CORS_ALLOW_ORIGINS = [
+            origin.strip()
+            for origin in CORS_ORIGINS_ENV.split(",")
+            if origin.strip()
+        ]
+    CORS_ALLOW_ORIGIN_REGEX: str | None = None
+else:
+    CORS_ALLOW_ORIGINS = []
+    CORS_ALLOW_ORIGIN_REGEX = DEFAULT_CORS_ORIGIN_REGEX
 
 # -----------------------------
 # Hindcast defaults (macro assumptions)
@@ -149,12 +176,12 @@ HINDCAST_PP_REGION_MULT = {
 # Marginal-effects defaults
 DEFAULT_MARGINAL_DELTA = 1.0
 MARGINAL_EXCLUDE_COLS = {
-    'UBIGEO',
-    'YEAR',
-    'NOMBDEP',
-    'NOMBPROB',
-    'NOMBDIST',
-    'Def_ha',
+    "UBIGEO",
+    "YEAR",
+    "NOMBDEP",
+    "NOMBPROB",
+    "NOMBDIST",
+    "Def_ha",
 }
 MARGINAL_LEVEL_COLUMNS = {
     "department": "NOMBDEP",
@@ -205,7 +232,6 @@ def normalize_ubigeo(ubigeo: str) -> str:
         return str(int(float(u))).zfill(6)
     except Exception:
         return u
-
 
 
 # -----------------------------
@@ -668,9 +694,13 @@ def resolve_feature_deltas(
     }
 
     if features:
-        candidates = [str(f).strip() for f in features if f is not None and str(f).strip()]
+        candidates = [
+            str(f).strip() for f in features if f is not None and str(f).strip()
+        ]
     elif deltas:
-        candidates = [str(f).strip() for f in deltas.keys() if f is not None and str(f).strip()]
+        candidates = [
+            str(f).strip() for f in deltas.keys() if f is not None and str(f).strip()
+        ]
     else:
         candidates = [str(c) for c in df.columns]
 
@@ -720,9 +750,7 @@ def compute_marginal_effects_by_group(
     pred_base = predict_ha_from_df(artifacts_obj, base)
     base_with_pred = base.copy()
     base_with_pred["_pred_ha"] = pred_base
-    base_group = (
-        base_with_pred.groupby(group_col, dropna=False)["_pred_ha"].sum()
-    )
+    base_group = base_with_pred.groupby(group_col, dropna=False)["_pred_ha"].sum()
 
     results: Dict[str, Any] = {}
     for key, base_val in base_group.items():
@@ -736,9 +764,7 @@ def compute_marginal_effects_by_group(
         modified[feat] = pd.to_numeric(modified[feat], errors="coerce") + float(delta)
         pred_mod = predict_ha_from_df(artifacts_obj, modified)
         modified["_pred_ha"] = pred_mod
-        mod_group = (
-            modified.groupby(group_col, dropna=False)["_pred_ha"].sum()
-        )
+        mod_group = modified.groupby(group_col, dropna=False)["_pred_ha"].sum()
 
         for key, base_val in base_group.items():
             key_str = _group_key(key)
@@ -853,6 +879,10 @@ class PredictResponse(BaseModel):
     model_name: str
     model_version: Optional[str] = None
     predictions_ha: List[float]
+    features: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw features used for prediction (before encoding).",
+    )
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -925,6 +955,15 @@ app = FastAPI(
     title="Deforestation XGBoost Prediction API",
     version="2.0.0",
     description="Predict deforestation (ha) from baseline defaults + overrides, with marginal-effects endpoints.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_origin_regex=CORS_ALLOW_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -1023,6 +1062,7 @@ def predict(req: PredictByUbigeoBaselineRequest) -> PredictResponse:
         if a.bundle_meta.get("version") is not None
         else None,
         predictions_ha=[pred_ha],
+        features=raw,
         meta={
             "latency_ms": ms,
             "ubigeo": ub,
@@ -1138,7 +1178,11 @@ def _marginal_effects_for_level(
     )
 
     group_col = MARGINAL_LEVEL_COLUMNS[level]
-    if level == "province" and group_col not in base.columns and "NOMBPROV" in base.columns:
+    if (
+        level == "province"
+        and group_col not in base.columns
+        and "NOMBPROV" in base.columns
+    ):
         group_col = "NOMBPROV"
     if group_col not in base.columns:
         raise HTTPException(
@@ -1162,9 +1206,7 @@ def _marginal_effects_for_level(
             },
         )
 
-    results = compute_marginal_effects_by_group(
-        base, group_col, feature_deltas, a
-    )
+    results = compute_marginal_effects_by_group(base, group_col, feature_deltas, a)
     ms = (time.perf_counter() - t0) * 1000.0
 
     return MarginalEffectsResponse(
