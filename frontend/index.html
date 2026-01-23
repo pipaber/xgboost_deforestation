@@ -3,10 +3,8 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>What If Peru? - Policy Dashboard</title>
+        <title>What If Peru? - Deforestation Studio</title>
         <link rel="stylesheet" href="styles.css" />
-        <!-- Chart.js from CDN -->
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <!-- D3.js from CDN -->
         <script src="https://d3js.org/d3.v7.min.js"></script>
     </head>
@@ -16,12 +14,12 @@
             id="sidebar-overlay"
             aria-hidden="true"
         ></div>
-        <div class="dashboard">
-            <!-- Sidebar: Controls -->
-            <aside class="sidebar">
+        <div class="app">
+            <aside class="panel controls-panel">
                 <div class="brand">
-                    <h1>What If Peru?</h1>
-                    <p>Simulador de Pol&iacute;ticas Nacionales</p>
+                    <span class="brand-tag">What If Peru?</span>
+                    <h1>Deforestaci&oacute;n</h1>
+                    <p>Simulador de pol&iacute;ticas nacionales</p>
                 </div>
 
                 <div class="scenario">
@@ -53,81 +51,260 @@
                 </div>
 
                 <div class="controls">
-                    <h2>Policy Levers</h2>
-                    <p class="subtitle">Ajuste las prioridades nacionales</p>
+                    <h2>Palancas</h2>
+                    <p class="subtitle">
+                        Ajuste los drivers de deforestaci&oacute;n
+                    </p>
 
-                    <div class="slider-group">
-                        <label>Miner&iacute;a (ha)</label>
-                        <div class="slider-row">
-                            <input
-                                type="range"
-                                min="-2000"
-                                max="2000"
-                                step="50"
-                                value="0"
-                                data-driver="Mining"
-                            />
-                            <span class="value">0 ha</span>
+                    <div class="control-group" data-driver="Mining">
+                        <div class="control-header">
+                            <label class="control-label" for="control-mining"
+                                >Miner&iacute;a</label
+                            >
+                            <span class="control-value" data-value>0 ha</span>
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-1"
+                                aria-label="Disminuir Mineria"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-mining"
+                                    class="control-input"
+                                    type="number"
+                                    min="-2000"
+                                    max="2000"
+                                    step="1"
+                                    value="0"
+                                    data-driver="Mining"
+                                />
+                                <span class="input-unit">ha</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="1"
+                                aria-label="Incrementar Mineria"
+                            >
+                                +
+                            </button>
                         </div>
                     </div>
 
-                    <div class="slider-group">
-                        <label>Agricultura (ha)</label>
-                        <div class="slider-row">
-                            <input
-                                type="range"
-                                min="-20000"
-                                max="20000"
-                                step="500"
-                                value="0"
-                                data-driver="Agriculture"
-                            />
-                            <span class="value">0 ha</span>
+                    <div class="control-group" data-driver="Agriculture">
+                        <div class="control-header">
+                            <label
+                                class="control-label"
+                                for="control-agriculture"
+                                >Agricultura</label
+                            >
+                            <span class="control-value" data-value>0 ha</span>
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-1"
+                                aria-label="Disminuir Agricultura"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-agriculture"
+                                    class="control-input"
+                                    type="number"
+                                    min="-20000"
+                                    max="20000"
+                                    step="1"
+                                    value="0"
+                                    data-driver="Agriculture"
+                                />
+                                <span class="input-unit">ha</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="1"
+                                aria-label="Incrementar Agricultura"
+                            >
+                                +
+                            </button>
                         </div>
                     </div>
 
-                    <div class="slider-group">
-                        <label>Infraestructura (&iacute;ndice)</label>
-                        <div class="slider-row">
-                            <input
-                                type="range"
-                                min="-500"
-                                max="500"
-                                step="10"
-                                value="0"
-                                data-driver="Infrastructure"
-                            />
-                            <span class="value">0</span>
+                    <div class="control-group" data-driver="Infrastructure">
+                        <div class="control-header">
+                            <label
+                                class="control-label"
+                                for="control-infrastructure"
+                                >Infraestructura</label
+                            >
+                            <span class="control-value" data-value>0 ha</span>
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-1"
+                                aria-label="Disminuir Infraestructura"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-infrastructure"
+                                    class="control-input"
+                                    type="number"
+                                    min="-500"
+                                    max="500"
+                                    step="1"
+                                    value="0"
+                                    data-driver="Infrastructure"
+                                />
+                                <span class="input-unit">ha</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="1"
+                                aria-label="Incrementar Infraestructura"
+                            >
+                                +
+                            </button>
                         </div>
                     </div>
 
-                    <div class="slider-group">
-                        <label>Clima (delta &deg;C)</label>
-                        <div class="slider-row">
-                            <input
-                                type="range"
-                                min="-2"
-                                max="2"
-                                step="0.1"
-                                value="0"
-                                data-driver="Climate"
-                            />
-                            <span class="value">0.0 &deg;C</span>
+                    <div class="control-group" data-driver="Temperature">
+                        <div class="control-header">
+                            <label
+                                class="control-label"
+                                for="control-temperature"
+                                >Temperatura</label
+                            >
+                            <span class="control-value" data-value
+                                >0.0 &deg;C</span
+                            >
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-0.1"
+                                aria-label="Disminuir Temperatura"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-temperature"
+                                    class="control-input"
+                                    type="number"
+                                    min="-2"
+                                    max="2"
+                                    step="0.1"
+                                    value="0"
+                                    data-driver="Temperature"
+                                />
+                                <span class="input-unit">&deg;C</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="0.1"
+                                aria-label="Incrementar Temperatura"
+                            >
+                                +
+                            </button>
                         </div>
                     </div>
 
-                    <div class="slider-group">
-                        <label>Poblaci&oacute;n (personas)</label>
-                        <div class="slider-row">
-                            <input
-                                type="range"
-                                min="-20000"
-                                max="20000"
-                                step="500"
-                                value="0"
-                                data-driver="Socioeconomic"
-                            />
-                            <span class="value">0</span>
+                    <div class="control-group" data-driver="Precipitation">
+                        <div class="control-header">
+                            <label
+                                class="control-label"
+                                for="control-precipitation"
+                                >Precipitaci&oacute;n</label
+                            >
+                            <span class="control-value" data-value>0 mm</span>
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-10"
+                                aria-label="Disminuir Precipitacion"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-precipitation"
+                                    class="control-input"
+                                    type="number"
+                                    min="-500"
+                                    max="500"
+                                    step="10"
+                                    value="0"
+                                    data-driver="Precipitation"
+                                />
+                                <span class="input-unit">mm</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="10"
+                                aria-label="Incrementar Precipitacion"
+                            >
+                                +
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-group" data-driver="Socioeconomic">
+                        <div class="control-header">
+                            <label
+                                class="control-label"
+                                for="control-population"
+                                >Poblaci&oacute;n</label
+                            >
+                            <span class="control-value" data-value>0</span>
+                        </div>
+                        <div class="control-row">
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="-500"
+                                aria-label="Disminuir Poblacion"
+                            >
+                                -
+                            </button>
+                            <div class="input-wrap">
+                                <input
+                                    id="control-population"
+                                    class="control-input"
+                                    type="number"
+                                    min="-20000"
+                                    max="20000"
+                                    step="500"
+                                    value="0"
+                                    data-driver="Socioeconomic"
+                                />
+                                <span class="input-unit">pers</span>
+                            </div>
+                            <button
+                                class="step-btn"
+                                type="button"
+                                data-step="500"
+                                aria-label="Incrementar Poblacion"
+                            >
+                                +
+                            </button>
                         </div>
                     </div>
 
@@ -144,8 +321,7 @@
                 </div>
             </aside>
 
-            <!-- Main Content -->
-            <main class="content">
+            <main class="stage">
                 <button
                     class="sidebar-toggle"
                     id="sidebar-toggle"
@@ -155,85 +331,91 @@
                     Controles
                 </button>
 
-                <!-- Top Stats Cards -->
-                <section class="stats-grid">
-                    <div class="card stat-card total">
-                        <h3>
-                            Deforestaci&oacute;n Total (<span id="year-label"
-                                >2024</span
-                            >)
-                        </h3>
-                        <div class="big-number" id="total-ha">Loading...</div>
-                        <div class="delta-badge" id="total-delta">+0 ha</div>
-                    </div>
-
-                    <div class="card stat-card bau">
-                        <h3>Business As Usual</h3>
-                        <div class="big-number secondary" id="bau-ha">...</div>
-                        <small>Proyecci&oacute;n sin cambios</small>
-                    </div>
-                </section>
-
-                <!-- Main Charts Area -->
-                <section class="charts-grid">
-                    <!-- Left: Contributions -->
-                    <div class="card chart-card">
-                        <h3 id="contrib-title">Contribuciones por causa</h3>
-                        <p class="chart-desc" id="contrib-subtitle">
-                            Porcentaje del cambio total (hover para ver ha).
+                <header class="stage-header">
+                    <div>
+                        <h2>Mapa nacional de predicci&oacute;n</h2>
+                        <p>
+                            Seleccione un departamento para ver el detalle
+                            provincial y los impactos de las palancas.
                         </p>
-                        <div class="chart-controls">
-                            <div class="field">
-                                <label for="level-select">Nivel</label>
-                                <select id="level-select">
-                                    <option value="department" selected>
-                                        Departamento
-                                    </option>
-                                    <option value="province">Provincia</option>
-                                </select>
+                    </div>
+                    <div class="scenario-pill" id="scenario-pill">
+                        Hindcast &middot; 2024
+                    </div>
+                </header>
+
+                <section class="map-grid">
+                    <article class="panel map-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3>Per&uacute; por departamento</h3>
+                                <p class="panel-subtitle">
+                                    Deforestaci&oacute;n proyectada (ha)
+                                </p>
                             </div>
-                            <div class="field">
-                                <label for="group-select" id="group-label"
-                                    >Departamento</label
+                            <div class="panel-metric">
+                                <span class="metric-label">Total</span>
+                                <span class="metric-value" id="total-ha"
+                                    >...</span
                                 >
-                                <select id="group-select">
-                                    <option value="">Cargando...</option>
-                                </select>
+                                <span class="metric-delta" id="total-delta"
+                                    >+0 ha</span
+                                >
+                                <span class="metric-note"
+                                    >BAU = escenario sin cambios</span
+                                >
                             </div>
                         </div>
-                        <p class="chart-note" id="contrib-empty">
-                            Ajuste los sliders para calcular contribuciones.
-                        </p>
-                        <div class="chart-container">
-                            <canvas id="marginalChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Right: Department Breakdown -->
-                    <div class="card chart-card">
-                        <h3>Impacto Regional</h3>
-                        <p class="chart-desc" id="region-desc">
-                            Deforestaci&oacute;n proyectada por Departamento
-                        </p>
-                        <div class="chart-container">
-                            <canvas id="deptChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Choropleth Map -->
-                    <div class="card chart-card map-card">
-                        <h3>Mapa de predicci&oacute;n</h3>
-                        <p class="chart-desc">
-                            Se actualiza con el nivel seleccionado.
-                        </p>
-                        <div class="map-container" id="map-container">
-                            <div class="map-placeholder" id="map-placeholder">
+                        <div class="map-container" id="dept-map">
+                            <div class="map-placeholder" id="dept-placeholder">
                                 Agregue GeoJSON en frontend/data para ver el
                                 mapa.
                             </div>
                         </div>
-                        <div class="map-legend" id="map-legend"></div>
+                        <div class="map-legend" id="dept-legend"></div>
+                    </article>
+
+                    <article class="panel map-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3>Detalle provincial</h3>
+                                <p
+                                    class="panel-subtitle"
+                                    id="province-subtitle"
+                                >
+                                    Seleccione un departamento para comenzar.
+                                </p>
+                            </div>
+                            <div class="panel-metric">
+                                <span class="metric-label">Departamento</span>
+                                <span class="metric-value" id="selected-dept"
+                                    >--</span
+                                >
+                            </div>
+                        </div>
+                        <div class="map-container" id="prov-map">
+                            <div class="map-placeholder" id="prov-placeholder">
+                                Seleccione un departamento para cargar el
+                                detalle.
+                            </div>
+                        </div>
+                        <div class="map-legend" id="prov-legend"></div>
+                    </article>
+                </section>
+
+                <section class="panel impact-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Importancia de palancas</h3>
+                            <p class="panel-subtitle" id="impact-subtitle">
+                                Mueva los sliders para ver el impacto relativo.
+                            </p>
+                        </div>
                     </div>
+                    <div class="bubble-row" id="impact-bubbles"></div>
+                    <p class="impact-note" id="impact-note">
+                        No hay cambios activos.
+                    </p>
                 </section>
             </main>
         </div>

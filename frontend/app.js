@@ -1,10 +1,4 @@
-// Config
 const API_URL = "http://localhost:8000";
-const COLOR_ACCENT =
-  getComputedStyle(document.documentElement)
-    .getPropertyValue("--accent")
-    .trim() || "#238636";
-
 const DEFAULT_YEAR = 2024;
 
 const SLIDER_CONFIG = {
@@ -13,7 +7,7 @@ const SLIDER_CONFIG = {
     unit: "ha",
     min: -2000,
     max: 2000,
-    step: 50,
+    step: 1,
     decimals: 0,
   },
   Agriculture: {
@@ -21,28 +15,36 @@ const SLIDER_CONFIG = {
     unit: "ha",
     min: -20000,
     max: 20000,
-    step: 500,
+    step: 1,
     decimals: 0,
   },
   Infrastructure: {
     feature: "Infraestructura",
-    unit: "index",
+    unit: "ha",
     min: -500,
     max: 500,
-    step: 10,
+    step: 1,
     decimals: 0,
   },
-  Climate: {
+  Temperature: {
     feature: "tmean",
-    unit: "deg C",
+    unit: "\u00b0C",
     min: -2,
     max: 2,
     step: 0.1,
     decimals: 1,
   },
+  Precipitation: {
+    feature: "pp",
+    unit: "mm",
+    min: -500,
+    max: 500,
+    step: 10,
+    decimals: 0,
+  },
   Socioeconomic: {
     feature: "Poblaci\u00f3n",
-    unit: "persons",
+    unit: "personas",
     min: -20000,
     max: 20000,
     step: 500,
@@ -53,10 +55,11 @@ const SLIDER_CONFIG = {
 const FEATURE_LABELS = {
   "Miner\u00eda": { label: "Mineria", unit: "ha", decimals: 0 },
   area_agropec: { label: "Agricultura", unit: "ha", decimals: 0 },
-  Infraestructura: { label: "Infraestructura", unit: "index", decimals: 0 },
-  tmean: { label: "Clima", unit: "deg C", decimals: 1 },
-  "Poblaci\u00f3n": { label: "Poblacion", unit: "persons", decimals: 0 },
-  Poblacion: { label: "Poblacion", unit: "persons", decimals: 0 },
+  Infraestructura: { label: "Infraestructura", unit: "ha", decimals: 0 },
+  tmean: { label: "Temperatura", unit: "\u00b0C", decimals: 1 },
+  pp: { label: "Precipitacion", unit: "mm", decimals: 0 },
+  "Poblaci\u00f3n": { label: "Poblacion", unit: "personas", decimals: 0 },
+  Poblacion: { label: "Poblacion", unit: "personas", decimals: 0 },
 };
 
 const MAP_SOURCES = {
@@ -70,48 +73,162 @@ const MAP_SOURCES = {
   },
 };
 
-// State
-let bauTotal = 0;
-let currentTotal = 0;
-let debounceTimer = null;
-let marginalResults = null;
-let departmentOptions = [];
-let provinceOptions = [];
-let mapSvg = null;
-let mapG = null;
-let mapPath = null;
-let mapGeoCache = {};
-let mapLastLevel = null;
-let mapLastValues = null;
+const MAP_RAMP = [
+  "#F4D166",
+  "#F1D065",
+  "#EDCF64",
+  "#EACF64",
+  "#E7CE63",
+  "#E4CD62",
+  "#E1CC62",
+  "#DECC61",
+  "#DACB60",
+  "#D7CA60",
+  "#D4C95F",
+  "#D1C95F",
+  "#CEC85E",
+  "#CBC75E",
+  "#C8C65E",
+  "#C5C55D",
+  "#C2C55D",
+  "#BFC45C",
+  "#BBC45C",
+  "#B8C35C",
+  "#B5C25B",
+  "#B2C25B",
+  "#AFC15B",
+  "#ACC05B",
+  "#A9BF5A",
+  "#A6BE5A",
+  "#A3BD5A",
+  "#A0BC5A",
+  "#9DBC59",
+  "#9ABB59",
+  "#97BA58",
+  "#94B958",
+  "#91B858",
+  "#8EB758",
+  "#8BB657",
+  "#88B557",
+  "#85B457",
+  "#83B357",
+  "#80B357",
+  "#7DB257",
+  "#7BB156",
+  "#78B056",
+  "#75AF56",
+  "#72AD56",
+  "#6FAC56",
+  "#6DAB56",
+  "#6AAA56",
+  "#67A956",
+  "#64A856",
+  "#62A756",
+  "#5FA555",
+  "#5DA455",
+  "#5AA355",
+  "#58A255",
+  "#56A154",
+  "#54A054",
+  "#529F54",
+  "#509E53",
+  "#4E9D53",
+  "#4C9C52",
+  "#4B9A52",
+  "#499952",
+  "#489851",
+  "#469651",
+  "#459550",
+  "#449450",
+  "#429350",
+  "#41924F",
+  "#40914F",
+  "#3F8F4F",
+  "#3D8E4E",
+  "#3C8D4E",
+  "#3B8B4D",
+  "#3A8A4D",
+  "#39894C",
+  "#38884C",
+  "#36864B",
+  "#35854B",
+  "#34844A",
+  "#338349",
+  "#328248",
+  "#308047",
+  "#2F7F46",
+  "#2E7D45",
+  "#2C7C44",
+  "#2B7B43",
+  "#297A42",
+  "#277942",
+  "#267841",
+  "#247740",
+  "#23753F",
+  "#21743E",
+  "#1F733D",
+  "#1D723C",
+  "#1C713B",
+  "#1A703A",
+  "#196F39",
+  "#176E38",
+  "#166D37",
+  "#146C36",
+];
 
-// Charts
-let contribChart = null;
-let deptChart = null;
+const MAP_EMPTY_FILL = "#e6edd6";
 
-// UI Elements
-const totalEl = document.getElementById("total-ha");
-const bauEl = document.getElementById("bau-ha");
-const deltaEl = document.getElementById("total-delta");
-const yearLabelEl = document.getElementById("year-label");
+const controlInputs = document.querySelectorAll(".control-input");
+const stepButtons = document.querySelectorAll(".step-btn");
+const resetBtn = document.getElementById("reset-btn");
+const modeSelect = document.getElementById("mode-select");
+const yearInput = document.getElementById("year-input");
 const scenarioMetaEl = document.getElementById("scenario-meta");
-const contribTitleEl = document.getElementById("contrib-title");
-const contribSubtitleEl = document.getElementById("contrib-subtitle");
-const contribEmptyEl = document.getElementById("contrib-empty");
-const regionDescEl = document.getElementById("region-desc");
-const mapContainer = document.getElementById("map-container");
-const mapPlaceholder = document.getElementById("map-placeholder");
-const mapLegend = document.getElementById("map-legend");
+const scenarioPillEl = document.getElementById("scenario-pill");
+const totalEl = document.getElementById("total-ha");
+const deltaEl = document.getElementById("total-delta");
+const provinceSubtitleEl = document.getElementById("province-subtitle");
+const selectedDeptEl = document.getElementById("selected-dept");
+const impactBubblesEl = document.getElementById("impact-bubbles");
+const impactNoteEl = document.getElementById("impact-note");
+const impactSubtitleEl = document.getElementById("impact-subtitle");
 const mapTooltip = document.getElementById("map-tooltip");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const sidebarOverlay = document.getElementById("sidebar-overlay");
 
-const sliders = document.querySelectorAll("input[type=range]");
-const resetBtn = document.getElementById("reset-btn");
-const modeSelect = document.getElementById("mode-select");
-const yearInput = document.getElementById("year-input");
-const levelSelect = document.getElementById("level-select");
-const groupSelect = document.getElementById("group-select");
-const groupLabelEl = document.getElementById("group-label");
+const deptMapState = createMapState({
+  container: document.getElementById("dept-map"),
+  legend: document.getElementById("dept-legend"),
+  placeholder: document.getElementById("dept-placeholder"),
+});
+const provMapState = createMapState({
+  container: document.getElementById("prov-map"),
+  legend: document.getElementById("prov-legend"),
+  placeholder: document.getElementById("prov-placeholder"),
+});
+
+let bauTotal = 0;
+let currentTotal = 0;
+let debounceTimer = null;
+let selectedDepartment = null;
+let selectedDepartmentKey = null;
+let lastDepartmentTotals = {};
+let lastProvinceResults = null;
+let lastMarginalResults = null;
+let lastDeltas = {};
+const mapGeoCache = {};
+
+function createMapState({ container, legend, placeholder }) {
+  return {
+    container,
+    legend,
+    placeholder,
+    svg: null,
+    g: null,
+    path: null,
+    lastRender: null,
+  };
+}
 
 function formatSignedNumber(value, decimals = 0) {
   const num = Number(value);
@@ -131,44 +248,88 @@ function formatWithUnit(value, unit, decimals = 0) {
   return unit ? `${base} ${unit}` : base;
 }
 
-function setSlidersEnabled(enabled) {
-  sliders.forEach((slider) => {
-    slider.disabled = !enabled;
-    const group = slider.closest(".slider-group");
-    if (group) {
-      group.classList.toggle("is-disabled", !enabled);
-    }
-  });
-  resetBtn.disabled = !enabled;
+function normalizeKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
 }
 
-function initSliderUI() {
-  sliders.forEach((slider) => {
-    const config = SLIDER_CONFIG[slider.dataset.driver];
+function setControlsEnabled(enabled) {
+  controlInputs.forEach((input) => {
+    input.disabled = !enabled;
+    input.closest(".control-group")?.classList.toggle("is-disabled", !enabled);
+  });
+  stepButtons.forEach((button) => {
+    button.disabled = !enabled;
+  });
+  if (resetBtn) {
+    resetBtn.disabled = !enabled;
+  }
+}
+
+function initControlUI() {
+  controlInputs.forEach((input) => {
+    const config = SLIDER_CONFIG[input.dataset.driver];
     if (!config) {
-      slider.disabled = true;
-      slider.closest(".slider-group")?.classList.add("is-disabled");
+      input.disabled = true;
+      input.closest(".control-group")?.classList.add("is-disabled");
       return;
     }
-    slider.min = config.min;
-    slider.max = config.max;
-    slider.step = config.step;
-    slider.value = 0;
-    updateSliderLabel(slider);
+    input.min = config.min;
+    input.max = config.max;
+    input.step = config.step;
+    input.value = 0;
+    updateControlValue(input, true);
   });
 }
 
-function updateSliderLabel(slider) {
-  const config = SLIDER_CONFIG[slider.dataset.driver];
+function clampValue(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseInputValue(input) {
+  const raw = String(input.value || "").trim();
+  if (raw === "" || raw === "-" || raw === "+") {
+    return null;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function normalizeInputValue(input, config, commit = false) {
+  const parsed = parseInputValue(input);
+  if (parsed === null) {
+    return null;
+  }
+  const clamped = clampValue(parsed, config.min, config.max);
+  const normalized = Math.abs(clamped) < 1e-9 ? 0 : clamped;
+  if (commit) {
+    input.value = String(normalized);
+  }
+  return normalized;
+}
+
+function updateControlValue(input, commit = false) {
+  const config = SLIDER_CONFIG[input.dataset.driver];
   if (!config) {
     return;
   }
-  const valueLabel = slider.parentElement.querySelector(".value");
+  const value = normalizeInputValue(input, config, commit);
+  if (value === null) {
+    return;
+  }
+  const valueLabel = input
+    .closest(".control-group")
+    ?.querySelector("[data-value]");
   if (!valueLabel) {
     return;
   }
-  const numeric = Number(slider.value);
-  valueLabel.innerText = formatWithUnit(numeric, config.unit, config.decimals);
+  valueLabel.textContent = formatWithUnit(value, config.unit, config.decimals);
 }
 
 function getScenario() {
@@ -186,301 +347,33 @@ function getScenario() {
   return { mode, year };
 }
 
-function getGroupBy() {
-  return levelSelect?.value === "province" ? "province" : "department";
-}
-
 function syncScenarioMeta() {
   const { mode, year } = getScenario();
   if (scenarioMetaEl) {
-    scenarioMetaEl.textContent = `Modo: ${mode} | Ano: ${year}`;
+    scenarioMetaEl.textContent = `Modo: ${mode} \u00b7 Ano: ${year}`;
   }
-  if (yearLabelEl) {
-    yearLabelEl.textContent = year;
+  if (scenarioPillEl) {
+    scenarioPillEl.textContent = `${mode} \u00b7 ${year}`;
   }
 }
 
 function buildFeatureDeltas() {
   const deltas = {};
-  sliders.forEach((slider) => {
-    const config = SLIDER_CONFIG[slider.dataset.driver];
+  controlInputs.forEach((input) => {
+    const config = SLIDER_CONFIG[input.dataset.driver];
     if (!config) {
       return;
     }
-    const value = Number(slider.value);
+    const value = normalizeInputValue(input, config, false);
+    if (value === null) {
+      return;
+    }
     if (!Number.isFinite(value) || value === 0) {
       return;
     }
     deltas[config.feature] = value;
   });
   return deltas;
-}
-
-async function fetchDepartments() {
-  const res = await fetch(`${API_URL}/meta/departments`);
-  if (!res.ok) {
-    throw new Error(`API error (${res.status})`);
-  }
-  const data = await res.json();
-  return Array.isArray(data.departments) ? data.departments : [];
-}
-
-async function fetchProvinces() {
-  const res = await fetch(`${API_URL}/meta/provinces`);
-  if (!res.ok) {
-    throw new Error(`API error (${res.status})`);
-  }
-  const data = await res.json();
-  return Array.isArray(data.provinces) ? data.provinces : [];
-}
-
-function populateGroupSelect(options) {
-  const current = groupSelect.value;
-  groupSelect.innerHTML = "";
-  if (!options.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "Sin datos";
-    groupSelect.appendChild(opt);
-    groupSelect.disabled = true;
-    return "";
-  }
-
-  options.forEach((name) => {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    groupSelect.appendChild(opt);
-  });
-
-  const selected = options.includes(current) ? current : options[0];
-  groupSelect.value = selected;
-  groupSelect.disabled = false;
-  return selected;
-}
-
-async function loadGroupOptions() {
-  updateGroupLabel();
-  groupSelect.disabled = true;
-  groupSelect.innerHTML = `<option value="">Cargando...</option>`;
-
-  try {
-    if (levelSelect.value === "province") {
-      if (!provinceOptions.length) {
-        provinceOptions = await fetchProvinces();
-      }
-      populateGroupSelect(provinceOptions);
-    } else {
-      if (!departmentOptions.length) {
-        departmentOptions = await fetchDepartments();
-      }
-      populateGroupSelect(departmentOptions);
-    }
-  } catch (err) {
-    console.error("Failed to load groups", err);
-    populateGroupSelect([]);
-  }
-}
-
-function normalizeKey(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase();
-}
-
-function setMapPlaceholder(message) {
-  if (!mapPlaceholder) {
-    return;
-  }
-  mapPlaceholder.textContent = message;
-  mapPlaceholder.style.display = message ? "block" : "none";
-  if (message && mapLegend) {
-    mapLegend.innerHTML = "";
-  }
-}
-
-function ensureMapSvg() {
-  if (!mapContainer) {
-    return;
-  }
-  if (!mapSvg) {
-    mapSvg = window.d3
-      .select(mapContainer)
-      .append("svg")
-      .attr("class", "choropleth");
-    mapG = mapSvg.append("g");
-  }
-}
-
-function mapSize() {
-  const rect = mapContainer.getBoundingClientRect();
-  const width = Math.max(300, Math.floor(rect.width));
-  const height = Math.max(360, Math.floor(rect.height));
-  return { width, height };
-}
-
-async function loadGeoData(level) {
-  const config = MAP_SOURCES[level];
-  if (!config) {
-    return null;
-  }
-  if (mapGeoCache[level]) {
-    return mapGeoCache[level];
-  }
-  if (!window.d3?.json) {
-    throw new Error("D3 not loaded");
-  }
-  const data = await window.d3.json(config.url);
-  mapGeoCache[level] = data;
-  return data;
-}
-
-function resolveNameProperty(features, preferred) {
-  if (!features || !features.length) {
-    return preferred;
-  }
-  if (features[0].properties && preferred in features[0].properties) {
-    return preferred;
-  }
-  const fallback = ["NOMBDEP", "NOMBPROB", "name", "NAME"];
-  for (const prop of fallback) {
-    if (features[0].properties && prop in features[0].properties) {
-      return prop;
-    }
-  }
-  return preferred;
-}
-
-function updateMapLegend(min, max, colorStart, colorEnd) {
-  if (!mapLegend) {
-    return;
-  }
-  const minLabel = Math.round(min).toLocaleString("en-US");
-  const maxLabel = Math.round(max).toLocaleString("en-US");
-  mapLegend.innerHTML = `
-    <div class="legend-bar" style="background: linear-gradient(90deg, ${colorStart}, ${colorEnd});"></div>
-    <div class="legend-labels">
-      <span>${minLabel} ha</span>
-      <span>${maxLabel} ha</span>
-    </div>
-  `;
-}
-
-function showMapTooltip(event, text) {
-  if (!mapTooltip) {
-    return;
-  }
-  mapTooltip.textContent = text;
-  mapTooltip.style.opacity = "1";
-  const offset = 12;
-  mapTooltip.style.left = `${event.clientX + offset}px`;
-  mapTooltip.style.top = `${event.clientY + offset}px`;
-}
-
-function hideMapTooltip() {
-  if (!mapTooltip) {
-    return;
-  }
-  mapTooltip.style.opacity = "0";
-}
-
-async function renderChoropleth(level, valuesByName) {
-  if (!mapContainer) {
-    return;
-  }
-  if (!window.d3) {
-    setMapPlaceholder("D3 no esta disponible.");
-    return;
-  }
-
-  const geo = await loadGeoData(level);
-  if (!geo || !geo.features) {
-    setMapPlaceholder("No se encontro el GeoJSON para el mapa.");
-    return;
-  }
-
-  ensureMapSvg();
-  const { width, height } = mapSize();
-  mapSvg.attr("width", width).attr("height", height);
-
-  const nameProp = resolveNameProperty(
-    geo.features,
-    MAP_SOURCES[level].nameProp,
-  );
-  const projection = window.d3.geoMercator().fitSize([width, height], geo);
-  mapPath = window.d3.geoPath().projection(projection);
-
-  const values = Object.values(valuesByName).filter((v) => Number.isFinite(v));
-  const min = values.length ? Math.min(...values) : 0;
-  const max = values.length ? Math.max(...values) : 1;
-  const scale = window.d3
-    .scaleSequential(window.d3.interpolateYlOrRd)
-    .domain([min, max || 1]);
-
-  const colorStart = scale(min);
-  const colorEnd = scale(max || 1);
-  updateMapLegend(min, max || 1, colorStart, colorEnd);
-
-  const features = mapG
-    .selectAll("path")
-    .data(geo.features, (d) => normalizeKey(d.properties?.[nameProp]));
-
-  features
-    .join(
-      (enter) =>
-        enter
-          .append("path")
-          .attr("d", mapPath)
-          .attr("class", "map-shape")
-          .attr("fill", "#1f2430")
-          .attr("stroke", "#1b1f2a")
-          .attr("stroke-width", 0.6),
-      (update) => update.attr("d", mapPath),
-      (exit) => exit.remove(),
-    )
-    .attr("fill", (d) => {
-      const key = normalizeKey(d.properties?.[nameProp]);
-      const value = valuesByName[key];
-      if (!Number.isFinite(value)) {
-        return "#1f2430";
-      }
-      return scale(value);
-    })
-    .on("mousemove", (event, d) => {
-      const key = normalizeKey(d.properties?.[nameProp]);
-      const rawName = d.properties?.[nameProp] || "NA";
-      const value = valuesByName[key];
-      const valueText = Number.isFinite(value)
-        ? `${Math.round(value).toLocaleString("en-US")} ha`
-        : "Sin datos";
-      showMapTooltip(event, `${rawName}: ${valueText}`);
-    })
-    .on("mouseleave", hideMapTooltip);
-
-  setMapPlaceholder("");
-  mapLastLevel = level;
-  mapLastValues = valuesByName;
-}
-
-function flattenAggregateResults(level, results) {
-  if (level === "province") {
-    const out = {};
-    Object.values(results || {}).forEach((provMap) => {
-      Object.entries(provMap || {}).forEach(([prov, val]) => {
-        const key = normalizeKey(prov);
-        const current = out[key] || 0;
-        out[key] = current + Number(val?.pred_ha || 0);
-      });
-    });
-    return out;
-  }
-  const out = {};
-  Object.entries(results || {}).forEach(([name, val]) => {
-    out[normalizeKey(name)] = Number(val?.pred_ha || 0);
-  });
-  return out;
 }
 
 async function fetchAggregate(deltas, groupBy) {
@@ -527,323 +420,615 @@ async function fetchMarginal(level, deltas) {
   return res.json();
 }
 
-function renderStats(current, bau) {
-  totalEl.innerText = current.toLocaleString("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-  bauEl.innerText = bau.toLocaleString("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
+function mapSize(container) {
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(280, Math.floor(rect.width));
+  const height = Math.max(240, Math.floor(rect.height));
+  return { width, height };
+}
 
-  const delta = current - bau;
-  const sign = delta > 0 ? "+" : "";
-  deltaEl.innerText = `${sign}${delta.toLocaleString("en-US", {
-    maximumFractionDigits: 0,
-  })} ha vs BAU`;
-
-  deltaEl.className = "delta-badge";
-  if (delta > 50) {
-    deltaEl.classList.add("delta-pos"); // Red
-  } else if (delta < -50) {
-    deltaEl.classList.add("delta-neg"); // Green
-  } else {
-    deltaEl.classList.add("delta-neutral");
+async function loadGeoData(level) {
+  const config = MAP_SOURCES[level];
+  if (!config) {
+    return null;
   }
-}
-
-function initCharts() {
-  const ctxM = document.getElementById("marginalChart").getContext("2d");
-  contribChart = new Chart(ctxM, {
-    type: "bar",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Contribucion (%)",
-          data: [],
-          backgroundColor: [],
-          meta: [],
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          beginAtZero: true,
-          max: 100,
-          grid: { color: "#30363d" },
-          ticks: {
-            callback: (value) => `${value}%`,
-          },
-        },
-        x: { grid: { display: false } },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (context) => {
-              const item = context.dataset.meta?.[context.dataIndex];
-              if (!item) {
-                return `${context.formattedValue}%`;
-              }
-              const percent = `${item.percent.toFixed(1)}%`;
-              const deltaHa = formatSignedNumber(item.deltaHa, 0);
-              const deltaUnit = formatWithUnit(
-                item.delta,
-                item.unit,
-                item.decimals,
-              );
-              const perUnit = Number.isFinite(item.deltaPerUnit)
-                ? formatSignedNumber(item.deltaPerUnit, 2)
-                : "n/a";
-              return [
-                `${item.label}: ${percent}`,
-                `Delta ha: ${deltaHa}`,
-                `Delta input: ${deltaUnit}`,
-                `Delta ha / unit: ${perUnit}`,
-              ];
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const ctxD = document.getElementById("deptChart").getContext("2d");
-  deptChart = new Chart(ctxD, {
-    type: "bar",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Deforestacion (ha)",
-          data: [],
-          backgroundColor: COLOR_ACCENT,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: "y", // Horizontal bar
-      scales: {
-        x: { grid: { color: "#30363d" } },
-        y: { grid: { display: false } },
-      },
-      plugins: { legend: { display: false } },
-    },
-  });
-}
-
-function flattenResultsForChart(level, results) {
-  if (level === "province") {
-    const out = {};
-    Object.values(results || {}).forEach((provMap) => {
-      Object.entries(provMap || {}).forEach(([prov, val]) => {
-        out[prov] = (out[prov] || 0) + Number(val?.pred_ha || 0);
-      });
-    });
-    return Object.entries(out).map(([name, value]) => ({ name, value }));
+  if (mapGeoCache[level]) {
+    return mapGeoCache[level];
   }
-  return Object.entries(results || {}).map(([name, val]) => ({
-    name,
-    value: Number(val?.pred_ha || 0),
-  }));
-}
-
-function renderRegionChart(results, level) {
-  const items = flattenResultsForChart(level, results)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10);
-
-  deptChart.data.labels = items.map((i) => i.name);
-  deptChart.data.datasets[0].data = items.map((i) => i.value);
-  deptChart.update();
-
-  if (regionDescEl) {
-    regionDescEl.textContent =
-      level === "province"
-        ? "Deforestacion proyectada por Provincia"
-        : "Deforestacion proyectada por Departamento";
+  if (!window.d3?.json) {
+    throw new Error("D3 not loaded");
   }
+  const data = await window.d3.json(config.url);
+  mapGeoCache[level] = data;
+  return data;
 }
 
-function updateGroupLabel() {
-  if (!groupLabelEl) {
+function resolveNameProperty(features, preferred) {
+  if (!features || !features.length) {
+    return preferred;
+  }
+  if (features[0].properties && preferred in features[0].properties) {
+    return preferred;
+  }
+  const fallback = ["NOMBDEP", "NOMBPROB", "name", "NAME"];
+  for (const prop of fallback) {
+    if (features[0].properties && prop in features[0].properties) {
+      return prop;
+    }
+  }
+  return preferred;
+}
+
+function setMapPlaceholder(state, message) {
+  if (!state.placeholder) {
     return;
   }
-  groupLabelEl.textContent =
-    levelSelect?.value === "province" ? "Provincia" : "Departamento";
+  state.placeholder.textContent = message;
+  state.placeholder.style.display = message ? "flex" : "none";
+  if (message && state.legend) {
+    state.legend.innerHTML = "";
+  }
 }
 
-function buildContributionItems(effects) {
-  const items = Object.entries(effects).map(([feature, effect]) => {
+function ensureMapSvg(state) {
+  if (!state.container) {
+    return;
+  }
+  if (!state.svg) {
+    state.svg = window.d3
+      .select(state.container)
+      .append("svg")
+      .attr("class", "choropleth");
+    state.g = state.svg.append("g");
+  }
+}
+
+function updateMapLegend(legendEl, min, max, colorStart, colorEnd) {
+  if (!legendEl) {
+    return;
+  }
+  const minLabel = Math.round(min).toLocaleString("en-US");
+  const maxLabel = Math.round(max).toLocaleString("en-US");
+  legendEl.innerHTML = `
+    <div class="legend-bar" style="background: linear-gradient(90deg, ${colorStart}, ${colorEnd});"></div>
+    <div class="legend-labels">
+      <span>${minLabel} ha</span>
+      <span>${maxLabel} ha</span>
+    </div>
+  `;
+}
+
+function showMapTooltip(event, text) {
+  if (!mapTooltip) {
+    return;
+  }
+  mapTooltip.textContent = text;
+  mapTooltip.style.opacity = "1";
+  const offset = 12;
+  mapTooltip.style.left = `${event.clientX + offset}px`;
+  mapTooltip.style.top = `${event.clientY + offset}px`;
+}
+
+function hideMapTooltip() {
+  if (!mapTooltip) {
+    return;
+  }
+  mapTooltip.style.opacity = "0";
+}
+
+function renderChoropleth(state, geo, nameProp, valuesByName, options = {}) {
+  if (!state.container) {
+    return;
+  }
+  if (!window.d3) {
+    setMapPlaceholder(state, "D3 no esta disponible.");
+    return;
+  }
+  if (!geo || !geo.features) {
+    setMapPlaceholder(state, "No se encontro el GeoJSON.");
+    return;
+  }
+
+  const features = options.filter
+    ? geo.features.filter(options.filter)
+    : geo.features.slice();
+  if (!features.length) {
+    setMapPlaceholder(
+      state,
+      options.emptyMessage || "No hay datos para mostrar.",
+    );
+    return;
+  }
+
+  ensureMapSvg(state);
+  const { width, height } = mapSize(state.container);
+  state.svg.attr("width", width).attr("height", height);
+
+  const fitTarget = options.fitGeo || { type: "FeatureCollection", features };
+  const projection = window.d3
+    .geoMercator()
+    .fitSize([width, height], fitTarget);
+  const path = window.d3.geoPath().projection(projection);
+  state.path = path;
+
+  const values = Object.values(valuesByName || {}).filter((v) =>
+    Number.isFinite(v),
+  );
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const scale = window.d3
+    .scaleSequential(window.d3.interpolateRgbBasis(MAP_RAMP))
+    .domain([min, max || 1]);
+
+  updateMapLegend(state.legend, min, max || 1, scale(min), scale(max || 1));
+
+  const joinKey = (d) => normalizeKey(d.properties?.[nameProp]);
+  const selection = state.g.selectAll("path.map-shape").data(features, joinKey);
+  const merged = selection.join(
+    (enter) => enter.append("path").attr("class", "map-shape"),
+    (update) => update,
+    (exit) => exit.remove(),
+  );
+
+  merged
+    .attr("d", path)
+    .attr("fill", (d) => {
+      const key = normalizeKey(d.properties?.[nameProp]);
+      const value = valuesByName?.[key];
+      if (!Number.isFinite(value)) {
+        return MAP_EMPTY_FILL;
+      }
+      return scale(value);
+    })
+    .classed(
+      "is-selected",
+      (d) => normalizeKey(d.properties?.[nameProp]) === options.selectedKey,
+    )
+    .on("mousemove", (event, d) => {
+      const key = normalizeKey(d.properties?.[nameProp]);
+      const rawName = d.properties?.[nameProp] || "NA";
+      const value = valuesByName?.[key];
+      const valueText = Number.isFinite(value)
+        ? `${Math.round(value).toLocaleString("en-US")} ha`
+        : "Sin datos";
+      showMapTooltip(event, `${rawName}: ${valueText}`);
+    })
+    .on("mouseleave", hideMapTooltip);
+
+  if (options.onClick) {
+    merged.on("click", (event, d) => options.onClick(d));
+  } else {
+    merged.on("click", null);
+  }
+
+  const outlineData = options.outlineGeo ? [options.outlineGeo] : [];
+  state.g
+    .selectAll("path.map-outline")
+    .data(outlineData)
+    .join(
+      (enter) => enter.append("path").attr("class", "map-outline"),
+      (update) => update,
+      (exit) => exit.remove(),
+    )
+    .attr("d", path);
+
+  setMapPlaceholder(state, "");
+  state.lastRender = { geo, nameProp, valuesByName, options };
+}
+
+function computeDepartmentTotals(results) {
+  const totals = {};
+  Object.entries(results || {}).forEach(([dep, provMap]) => {
+    const sum = Object.values(provMap || {}).reduce(
+      (acc, item) => acc + Number(item?.pred_ha || 0),
+      0,
+    );
+    totals[normalizeKey(dep)] = sum;
+  });
+  return totals;
+}
+
+function findProvinceMap(results, targetKey) {
+  if (!results || !targetKey) {
+    return null;
+  }
+  for (const [dep, provMap] of Object.entries(results)) {
+    if (normalizeKey(dep) === targetKey) {
+      return { dep, provMap };
+    }
+  }
+  return null;
+}
+
+function pickDefaultDepartment(results) {
+  let bestKey = null;
+  let bestValue = -Infinity;
+  Object.entries(results || {}).forEach(([dep, provMap]) => {
+    const sum = Object.values(provMap || {}).reduce(
+      (acc, item) => acc + Number(item?.pred_ha || 0),
+      0,
+    );
+    if (sum > bestValue) {
+      bestValue = sum;
+      bestKey = dep;
+    }
+  });
+  return bestKey;
+}
+
+async function renderDepartmentMap(valuesByName) {
+  const geo = await loadGeoData("department");
+  if (!geo?.features) {
+    setMapPlaceholder(deptMapState, "No se encontro el mapa de departamentos.");
+    return;
+  }
+  const nameProp = resolveNameProperty(
+    geo.features,
+    MAP_SOURCES.department.nameProp,
+  );
+
+  renderChoropleth(deptMapState, geo, nameProp, valuesByName, {
+    selectedKey: selectedDepartmentKey,
+    onClick: (feature) => {
+      const rawName = feature?.properties?.[nameProp];
+      if (rawName) {
+        setSelectedDepartment(rawName);
+      }
+    },
+  });
+}
+
+async function renderProvinceMap() {
+  if (!selectedDepartmentKey) {
+    setMapPlaceholder(
+      provMapState,
+      "Seleccione un departamento para cargar el detalle.",
+    );
+    if (provMapState.legend) {
+      provMapState.legend.innerHTML = "";
+    }
+    return;
+  }
+
+  const geo = await loadGeoData("province");
+  if (!geo?.features) {
+    setMapPlaceholder(provMapState, "No se encontro el mapa provincial.");
+    return;
+  }
+  const nameProp = resolveNameProperty(
+    geo.features,
+    MAP_SOURCES.province.nameProp,
+  );
+
+  const match = findProvinceMap(lastProvinceResults, selectedDepartmentKey);
+  const provinceValues = {};
+  const provinceKeys = new Set();
+  if (match) {
+    Object.entries(match.provMap || {}).forEach(([prov, item]) => {
+      const key = normalizeKey(prov);
+      provinceValues[key] = Number(item?.pred_ha || 0);
+      provinceKeys.add(key);
+    });
+  }
+
+  if (!provinceKeys.size) {
+    setMapPlaceholder(
+      provMapState,
+      "No hay provincias para este departamento.",
+    );
+    if (provMapState.legend) {
+      provMapState.legend.innerHTML = "";
+    }
+    return;
+  }
+
+  const deptGeo = await loadGeoData("department");
+  let outlineFeature = null;
+  if (deptGeo?.features?.length) {
+    const depNameProp = resolveNameProperty(
+      deptGeo.features,
+      MAP_SOURCES.department.nameProp,
+    );
+    outlineFeature =
+      deptGeo.features.find(
+        (feature) =>
+          normalizeKey(feature?.properties?.[depNameProp]) ===
+          selectedDepartmentKey,
+      ) || null;
+  }
+
+  renderChoropleth(provMapState, geo, nameProp, provinceValues, {
+    filter: (feature) =>
+      provinceKeys.has(normalizeKey(feature?.properties?.[nameProp])),
+    fitGeo: outlineFeature || {
+      type: "FeatureCollection",
+      features: geo.features.filter((feature) =>
+        provinceKeys.has(normalizeKey(feature?.properties?.[nameProp])),
+      ),
+    },
+    outlineGeo: outlineFeature,
+  });
+}
+
+function renderStats(current, bau) {
+  if (totalEl) {
+    totalEl.textContent = Math.round(current).toLocaleString("en-US");
+  }
+  if (deltaEl) {
+    const delta = current - bau;
+    deltaEl.textContent = `${formatSignedNumber(delta, 0)} ha vs BAU`;
+    deltaEl.classList.toggle("is-negative", delta < 0);
+  }
+}
+
+function setSelectedDepartment(name) {
+  selectedDepartment = name;
+  selectedDepartmentKey = normalizeKey(name);
+  if (selectedDeptEl) {
+    selectedDeptEl.textContent = name;
+  }
+  if (provinceSubtitleEl) {
+    provinceSubtitleEl.textContent = `Provincias en ${name}`;
+  }
+  renderDepartmentMap(lastDepartmentTotals).catch((err) => {
+    console.error("Department map update failed", err);
+  });
+  renderProvinceMap().catch((err) => {
+    console.error("Province map update failed", err);
+  });
+  renderImpactBubbles(lastMarginalResults, lastDeltas);
+}
+
+function buildImpactItems(effects, deltas) {
+  return Object.keys(SLIDER_CONFIG).map((driver) => {
+    const config = SLIDER_CONFIG[driver];
+    const feature = config.feature;
     const meta = FEATURE_LABELS[feature] || {
       label: feature,
       unit: "",
       decimals: 0,
     };
+    const effect = effects?.[feature] || {};
     return {
-      feature,
       label: meta.label,
+      feature,
       unit: meta.unit,
       decimals: meta.decimals,
-      delta: Number(effect?.delta || 0),
+      deltaInput: Number(deltas?.[feature] || 0),
       deltaHa: Number(effect?.delta_ha || 0),
-      deltaPerUnit: effect?.delta_per_unit,
     };
   });
+}
 
+function mixColor(startHex, endHex, weight) {
+  const clamp = (val) => Math.max(0, Math.min(1, val));
+  const w = clamp(weight);
+  const parseHex = (hex) => {
+    const clean = hex.replace("#", "");
+    const num = Number.parseInt(clean, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255,
+    };
+  };
+  const start = parseHex(startHex);
+  const end = parseHex(endHex);
+  const r = Math.round(start.r + (end.r - start.r) * w);
+  const g = Math.round(start.g + (end.g - start.g) * w);
+  const b = Math.round(start.b + (end.b - start.b) * w);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function renderImpactBubbles(results, deltas) {
+  if (!impactBubblesEl) {
+    return;
+  }
+
+  const effectsForDept = (() => {
+    if (!results || !selectedDepartmentKey) {
+      return null;
+    }
+    for (const [dep, payload] of Object.entries(results)) {
+      if (normalizeKey(dep) === selectedDepartmentKey) {
+        return payload?.effects || null;
+      }
+    }
+    return null;
+  })();
+
+  const items = buildImpactItems(effectsForDept, deltas || {});
+  const activeItems = items.filter((item) => item.deltaInput !== 0);
   const totalAbs = items.reduce((sum, item) => sum + Math.abs(item.deltaHa), 0);
-
-  return items
-    .map((item) => ({
-      ...item,
-      percent: totalAbs > 0 ? (Math.abs(item.deltaHa) / totalAbs) * 100 : 0,
-      color: item.deltaHa >= 0 ? "#da3633" : "#238636",
-    }))
-    .sort((a, b) => b.percent - a.percent);
-}
-
-function renderContributionChart(groupName) {
-  if (!marginalResults || !marginalResults[groupName]) {
-    contribEmptyEl.style.display = "block";
-    contribEmptyEl.textContent = "No hay datos para esta seleccion.";
-    contribChart.data.labels = [];
-    contribChart.data.datasets[0].data = [];
-    contribChart.update();
-    return;
-  }
-
-  const effects = marginalResults[groupName].effects || {};
-  const items = buildContributionItems(effects);
-
-  if (!items.length) {
-    contribEmptyEl.style.display = "block";
-    contribEmptyEl.textContent = "No hay contribuciones para mostrar.";
-    contribChart.data.labels = [];
-    contribChart.data.datasets[0].data = [];
-    contribChart.update();
-    return;
-  }
-
-  contribEmptyEl.style.display = "none";
-  contribChart.data.labels = items.map((item) => item.label);
-  contribChart.data.datasets[0].data = items.map((item) => item.percent);
-  contribChart.data.datasets[0].backgroundColor = items.map(
-    (item) => item.color,
+  const maxAbs = items.reduce(
+    (max, item) => Math.max(max, Math.abs(item.deltaHa)),
+    0,
   );
-  contribChart.data.datasets[0].meta = items;
-  contribChart.update();
 
-  if (contribTitleEl && contribSubtitleEl) {
-    const levelLabel =
-      levelSelect?.value === "province" ? "Provincia" : "Departamento";
-    contribTitleEl.textContent = "Contribuciones por causa";
-    contribSubtitleEl.textContent = `${levelLabel}: ${groupName}`;
+  impactBubblesEl.innerHTML = "";
+  items.forEach((item) => {
+    const intensity = maxAbs > 0 ? Math.abs(item.deltaHa) / maxAbs : 0;
+    const isActive = item.deltaInput !== 0;
+    const size = isActive ? 46 + intensity * 28 : 36;
+    const percent =
+      totalAbs > 0 ? (Math.abs(item.deltaHa) / totalAbs) * 100 : 0;
+
+    const color = isActive
+      ? item.deltaHa >= 0
+        ? mixColor("#f1d065", "#6fac56", intensity)
+        : mixColor("#a6be5a", "#2f7f46", intensity)
+      : "#e3ebd4";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    const circle = document.createElement("div");
+    circle.className = "bubble-circle";
+    circle.style.setProperty("--size", `${size}px`);
+    circle.style.setProperty("--color", color);
+
+    const label = document.createElement("div");
+    label.className = "bubble-label";
+    label.textContent = item.label;
+
+    const meta = document.createElement("div");
+    meta.className = "bubble-meta";
+    if (isActive) {
+      const deltaHa = formatSignedNumber(item.deltaHa, 0);
+      const percentText = `${percent.toFixed(0)}%`;
+      meta.textContent = `${deltaHa} ha \u00b7 ${percentText}`;
+    } else {
+      meta.textContent = "Sin cambio";
+    }
+
+    bubble.append(circle, label, meta);
+    impactBubblesEl.appendChild(bubble);
+  });
+
+  if (impactNoteEl) {
+    impactNoteEl.style.display = activeItems.length ? "none" : "block";
+  }
+  if (impactSubtitleEl) {
+    impactSubtitleEl.textContent = selectedDepartment
+      ? `Impacto relativo en ${selectedDepartment}`
+      : "Impacto relativo nacional";
   }
 }
 
-async function updateContributions(deltas) {
-  const hasDeltas = Object.keys(deltas).length > 0;
-  updateGroupLabel();
-
-  if (!hasDeltas) {
-    marginalResults = null;
-    contribEmptyEl.style.display = "block";
-    contribEmptyEl.textContent =
-      "Ajuste los sliders para calcular contribuciones.";
-    contribChart.data.labels = [];
-    contribChart.data.datasets[0].data = [];
-    contribChart.update();
+async function updateMarginal(deltas) {
+  if (!Object.keys(deltas).length) {
+    lastMarginalResults = null;
+    renderImpactBubbles(lastMarginalResults, deltas);
     return;
   }
-
   try {
-    const data = await fetchMarginal(levelSelect.value, deltas);
-    marginalResults = data.results || {};
-    renderContributionChart(groupSelect.value);
+    const data = await fetchMarginal("department", deltas);
+    lastMarginalResults = data.results || null;
   } catch (err) {
     console.error("Marginal effects failed", err);
-    contribEmptyEl.style.display = "block";
-    contribEmptyEl.textContent =
-      "Error al calcular contribuciones (revise el API).";
+    lastMarginalResults = null;
   }
+  renderImpactBubbles(lastMarginalResults, deltas);
 }
 
 async function refreshScenario() {
   syncScenarioMeta();
-  setSlidersEnabled(false);
+  setControlsEnabled(false);
 
   try {
-    const bauData = await fetchAggregate({}, getGroupBy());
-    bauTotal = bauData.total_pred_ha;
-    renderStats(bauTotal, bauTotal);
-    renderRegionChart(bauData.results, getGroupBy());
-    setSlidersEnabled(true);
+    const bauData = await fetchAggregate({}, "province");
+    bauTotal = Number(bauData?.total_pred_ha || 0);
+    setControlsEnabled(true);
     await updateDashboard();
   } catch (err) {
     console.error("Init failed:", err);
-    totalEl.innerText = "Error";
-    setSlidersEnabled(false);
+    if (totalEl) {
+      totalEl.textContent = "Error";
+    }
+    setControlsEnabled(false);
   }
 }
 
 async function updateDashboard() {
   syncScenarioMeta();
   const deltas = buildFeatureDeltas();
+  lastDeltas = deltas;
 
   try {
-    const data = await fetchAggregate(deltas, getGroupBy());
-    currentTotal = data.total_pred_ha;
+    const data = await fetchAggregate(deltas, "province");
+    currentTotal = Number(data?.total_pred_ha || 0);
+    lastProvinceResults = data?.results || null;
 
+    lastDepartmentTotals = computeDepartmentTotals(lastProvinceResults);
     renderStats(currentTotal, bauTotal);
-    renderRegionChart(data.results, getGroupBy());
-    const mapValues = flattenAggregateResults(getGroupBy(), data.results);
-    try {
-      await renderChoropleth(getGroupBy(), mapValues);
-    } catch (err) {
-      console.error("Map render failed", err);
-      setMapPlaceholder("No se pudo cargar el mapa.");
+
+    const selectedMatch = selectedDepartmentKey
+      ? findProvinceMap(lastProvinceResults, selectedDepartmentKey)
+      : null;
+    if (!selectedDepartment || !selectedMatch) {
+      const defaultDept = pickDefaultDepartment(lastProvinceResults);
+      if (defaultDept) {
+        selectedDepartment = defaultDept;
+        selectedDepartmentKey = normalizeKey(defaultDept);
+      }
     }
+
+    if (selectedDepartment) {
+      if (selectedDeptEl) {
+        selectedDeptEl.textContent = selectedDepartment;
+      }
+      if (provinceSubtitleEl) {
+        provinceSubtitleEl.textContent = `Provincias en ${selectedDepartment}`;
+      }
+    }
+
+    await renderDepartmentMap(lastDepartmentTotals);
+    await renderProvinceMap();
   } catch (err) {
     console.error("Update failed", err);
   }
 
-  await updateContributions(deltas);
+  await updateMarginal(deltas);
 }
 
-// UI Listeners
-sliders.forEach((slider) => {
-  slider.addEventListener("input", () => {
-    updateSliderLabel(slider);
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(updateDashboard, 500);
+function scheduleUpdate(delayMs) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(updateDashboard, delayMs);
+}
+
+function applyDeltaToInput(input, delta) {
+  const config = SLIDER_CONFIG[input.dataset.driver];
+  if (!config) {
+    return;
+  }
+  const current = normalizeInputValue(input, config, false) ?? 0;
+  const next = clampValue(current + delta, config.min, config.max);
+  input.value = String(next);
+  updateControlValue(input, true);
+  scheduleUpdate(200);
+}
+
+controlInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    updateControlValue(input, false);
+    scheduleUpdate(350);
+  });
+  input.addEventListener("change", () => {
+    updateControlValue(input, true);
+    scheduleUpdate(200);
   });
 });
 
-resetBtn.addEventListener("click", () => {
-  sliders.forEach((s) => {
-    s.value = 0;
-    updateSliderLabel(s);
+stepButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const group = button.closest(".control-group");
+    const input = group?.querySelector(".control-input");
+    if (!input || input.disabled) {
+      return;
+    }
+    const step = Number(button.dataset.step);
+    const delta = Number.isFinite(step) ? step : 0;
+    applyDeltaToInput(input, delta);
   });
-  updateDashboard();
 });
 
-modeSelect.addEventListener("change", refreshScenario);
-yearInput.addEventListener("change", refreshScenario);
-levelSelect.addEventListener("change", async () => {
-  await loadGroupOptions();
-  await updateDashboard();
-});
-groupSelect.addEventListener("change", () => {
-  renderContributionChart(groupSelect.value);
-});
+if (resetBtn) {
+  resetBtn.addEventListener("click", () => {
+    controlInputs.forEach((input) => {
+      input.value = 0;
+      updateControlValue(input, true);
+    });
+    updateDashboard();
+  });
+}
+
+if (modeSelect) {
+  modeSelect.addEventListener("change", refreshScenario);
+}
+
+if (yearInput) {
+  yearInput.addEventListener("change", refreshScenario);
+}
 
 function closeSidebar() {
   document.body.classList.remove("sidebar-open");
@@ -862,21 +1047,34 @@ window.addEventListener("keydown", (event) => {
     closeSidebar();
   }
 });
+
 window.addEventListener("resize", () => {
-  if (mapLastLevel && mapLastValues) {
-    renderChoropleth(mapLastLevel, mapLastValues).catch((err) => {
-      console.error("Map resize failed", err);
-    });
+  const dept = deptMapState.lastRender;
+  if (dept) {
+    renderChoropleth(
+      deptMapState,
+      dept.geo,
+      dept.nameProp,
+      dept.valuesByName,
+      dept.options,
+    );
+  }
+  const prov = provMapState.lastRender;
+  if (prov) {
+    renderChoropleth(
+      provMapState,
+      prov.geo,
+      prov.nameProp,
+      prov.valuesByName,
+      prov.options,
+    );
   }
 });
 
 async function init() {
-  initCharts();
-  initSliderUI();
-  updateGroupLabel();
-  await loadGroupOptions();
+  initControlUI();
+  syncScenarioMeta();
   await refreshScenario();
 }
 
-// Start
 init();

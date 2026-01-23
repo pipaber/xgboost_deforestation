@@ -373,7 +373,7 @@ def build_X_from_raw(raw: Dict[str, Any], feature_columns: List[str]) -> pd.Data
 
     # Coerce all to numeric where possible; invalid parsing becomes NaN.
     # Explicitly wrap as DataFrame to keep the return type stable for static type checkers.
-    X = pd.DataFrame(X.applymap(lambda v: pd.to_numeric(v, errors="coerce")))
+    X = pd.DataFrame(X.apply(pd.to_numeric, errors="coerce"))
 
     # Align to schema
     missing = [c for c in feature_columns if c not in X.columns]
@@ -408,7 +408,7 @@ def build_X_from_df(df: pd.DataFrame, feature_columns: List[str]) -> pd.DataFram
 
     X.columns = sanitize_feature_names(list(X.columns))
 
-    X = pd.DataFrame(X.applymap(lambda v: pd.to_numeric(v, errors="coerce")))
+    X = pd.DataFrame(X.apply(pd.to_numeric, errors="coerce"))
 
     missing = [c for c in feature_columns if c not in X.columns]
     for c in missing:
