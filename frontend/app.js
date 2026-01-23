@@ -73,109 +73,9 @@ const MAP_SOURCES = {
   },
 };
 
-const MAP_RAMP = [
-  "#F4D166",
-  "#F1D065",
-  "#EDCF64",
-  "#EACF64",
-  "#E7CE63",
-  "#E4CD62",
-  "#E1CC62",
-  "#DECC61",
-  "#DACB60",
-  "#D7CA60",
-  "#D4C95F",
-  "#D1C95F",
-  "#CEC85E",
-  "#CBC75E",
-  "#C8C65E",
-  "#C5C55D",
-  "#C2C55D",
-  "#BFC45C",
-  "#BBC45C",
-  "#B8C35C",
-  "#B5C25B",
-  "#B2C25B",
-  "#AFC15B",
-  "#ACC05B",
-  "#A9BF5A",
-  "#A6BE5A",
-  "#A3BD5A",
-  "#A0BC5A",
-  "#9DBC59",
-  "#9ABB59",
-  "#97BA58",
-  "#94B958",
-  "#91B858",
-  "#8EB758",
-  "#8BB657",
-  "#88B557",
-  "#85B457",
-  "#83B357",
-  "#80B357",
-  "#7DB257",
-  "#7BB156",
-  "#78B056",
-  "#75AF56",
-  "#72AD56",
-  "#6FAC56",
-  "#6DAB56",
-  "#6AAA56",
-  "#67A956",
-  "#64A856",
-  "#62A756",
-  "#5FA555",
-  "#5DA455",
-  "#5AA355",
-  "#58A255",
-  "#56A154",
-  "#54A054",
-  "#529F54",
-  "#509E53",
-  "#4E9D53",
-  "#4C9C52",
-  "#4B9A52",
-  "#499952",
-  "#489851",
-  "#469651",
-  "#459550",
-  "#449450",
-  "#429350",
-  "#41924F",
-  "#40914F",
-  "#3F8F4F",
-  "#3D8E4E",
-  "#3C8D4E",
-  "#3B8B4D",
-  "#3A8A4D",
-  "#39894C",
-  "#38884C",
-  "#36864B",
-  "#35854B",
-  "#34844A",
-  "#338349",
-  "#328248",
-  "#308047",
-  "#2F7F46",
-  "#2E7D45",
-  "#2C7C44",
-  "#2B7B43",
-  "#297A42",
-  "#277942",
-  "#267841",
-  "#247740",
-  "#23753F",
-  "#21743E",
-  "#1F733D",
-  "#1D723C",
-  "#1C713B",
-  "#1A703A",
-  "#196F39",
-  "#176E38",
-  "#166D37",
-  "#146C36",
-];
-
+const MAP_COLOR_LOW = "#3D5941";
+const MAP_COLOR_MID = "#F6EDBD";
+const MAP_COLOR_HIGH = "#CA562C";
 const MAP_EMPTY_FILL = "#e6edd6";
 
 const controlInputs = document.querySelectorAll(".control-input");
@@ -195,6 +95,8 @@ const impactSubtitleEl = document.getElementById("impact-subtitle");
 const mapTooltip = document.getElementById("map-tooltip");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const sidebarOverlay = document.getElementById("sidebar-overlay");
+const fullscreenOverlay = document.getElementById("map-fullscreen-overlay");
+const fullscreenButtons = document.querySelectorAll("[data-map-toggle]");
 
 const deptMapState = createMapState({
   container: document.getElementById("dept-map"),
@@ -217,6 +119,7 @@ let lastProvinceResults = null;
 let lastMarginalResults = null;
 let lastDeltas = {};
 const mapGeoCache = {};
+let fullscreenPanel = null;
 
 function createMapState({ container, legend, placeholder }) {
   return {
@@ -422,8 +325,10 @@ async function fetchMarginal(level, deltas) {
 
 function mapSize(container) {
   const rect = container.getBoundingClientRect();
-  const width = Math.max(280, Math.floor(rect.width));
-  const height = Math.max(240, Math.floor(rect.height));
+  const rawWidth = Math.floor(rect.width);
+  const rawHeight = Math.floor(rect.height);
+  const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 280;
+  const height = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 240;
   return { width, height };
 }
 
@@ -483,17 +388,42 @@ function ensureMapSvg(state) {
   }
 }
 
-function updateMapLegend(legendEl, min, max, colorStart, colorEnd) {
+function updateMapLegend(legendEl, min, max, colors, thresholds = []) {
   if (!legendEl) {
     return;
   }
-  const minLabel = Math.round(min).toLocaleString("en-US");
-  const maxLabel = Math.round(max).toLocaleString("en-US");
+  const safeMin = Number.isFinite(min) ? min : 0;
+  const safeMax = Number.isFinite(max) ? max : 0;
+  const [t1, t2] =
+    thresholds.length === 2
+      ? thresholds
+      : [
+          safeMin + (safeMax - safeMin) / 3,
+          safeMin + ((safeMax - safeMin) * 2) / 3,
+        ];
+
+  const formatValue = (value) => Math.round(value).toLocaleString("en-US");
+  const ranges = [
+    [safeMin, t1],
+    [t1, t2],
+    [t2, safeMax],
+  ];
+  const labels = ranges.map(
+    ([start, end]) => `${formatValue(start)}–${formatValue(end)} ha`,
+  );
+  const steps = colors
+    .map((color, index) => {
+      const start = (index / colors.length) * 100;
+      const end = ((index + 1) / colors.length) * 100;
+      return `${color} ${start}% ${end}%`;
+    })
+    .join(", ");
   legendEl.innerHTML = `
-    <div class="legend-bar" style="background: linear-gradient(90deg, ${colorStart}, ${colorEnd});"></div>
-    <div class="legend-labels">
-      <span>${minLabel} ha</span>
-      <span>${maxLabel} ha</span>
+    <div class="legend-bar" style="background: linear-gradient(90deg, ${steps});"></div>
+    <div class="legend-labels legend-labels--bins">
+      <span>${labels[0]}</span>
+      <span>${labels[1]}</span>
+      <span>${labels[2]}</span>
     </div>
   `;
 }
@@ -556,11 +486,13 @@ function renderChoropleth(state, geo, nameProp, valuesByName, options = {}) {
   );
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
+  const colors = [MAP_COLOR_LOW, MAP_COLOR_MID, MAP_COLOR_HIGH];
   const scale = window.d3
-    .scaleSequential(window.d3.interpolateRgbBasis(MAP_RAMP))
-    .domain([min, max || 1]);
+    .scaleQuantize()
+    .domain([min, max || 1])
+    .range(colors);
 
-  updateMapLegend(state.legend, min, max || 1, scale(min), scale(max || 1));
+  updateMapLegend(state.legend, min, max || 1, colors, scale.thresholds());
 
   const joinKey = (d) => normalizeKey(d.properties?.[nameProp]);
   const selection = state.g.selectAll("path.map-shape").data(features, joinKey);
@@ -800,24 +732,21 @@ function buildImpactItems(effects, deltas) {
   });
 }
 
-function mixColor(startHex, endHex, weight) {
-  const clamp = (val) => Math.max(0, Math.min(1, val));
-  const w = clamp(weight);
-  const parseHex = (hex) => {
-    const clean = hex.replace("#", "");
-    const num = Number.parseInt(clean, 16);
-    return {
-      r: (num >> 16) & 255,
-      g: (num >> 8) & 255,
-      b: num & 255,
-    };
-  };
-  const start = parseHex(startHex);
-  const end = parseHex(endHex);
-  const r = Math.round(start.r + (end.r - start.r) * w);
-  const g = Math.round(start.g + (end.g - start.g) * w);
-  const b = Math.round(start.b + (end.b - start.b) * w);
-  return `rgb(${r}, ${g}, ${b})`;
+function pickBinnedColor(value, minValue, maxValue) {
+  const min = Number.isFinite(minValue) ? minValue : 0;
+  const max = Number.isFinite(maxValue) ? maxValue : 0;
+  const range = max - min;
+  if (!Number.isFinite(value) || range <= 0) {
+    return MAP_COLOR_MID;
+  }
+  const step = range / 3;
+  if (value <= min + step) {
+    return MAP_COLOR_LOW;
+  }
+  if (value <= min + step * 2) {
+    return MAP_COLOR_MID;
+  }
+  return MAP_COLOR_HIGH;
 }
 
 function renderImpactBubbles(results, deltas) {
@@ -844,20 +773,26 @@ function renderImpactBubbles(results, deltas) {
     (max, item) => Math.max(max, Math.abs(item.deltaHa)),
     0,
   );
+  const minDelta = items.reduce(
+    (min, item) => Math.min(min, Number(item.deltaHa || 0)),
+    0,
+  );
+  const maxDelta = items.reduce(
+    (max, item) => Math.max(max, Number(item.deltaHa || 0)),
+    0,
+  );
 
   impactBubblesEl.innerHTML = "";
   items.forEach((item) => {
     const intensity = maxAbs > 0 ? Math.abs(item.deltaHa) / maxAbs : 0;
     const isActive = item.deltaInput !== 0;
-    const size = isActive ? 46 + intensity * 28 : 36;
+    const size = isActive ? 30 + intensity * 12 : 22;
     const percent =
       totalAbs > 0 ? (Math.abs(item.deltaHa) / totalAbs) * 100 : 0;
 
     const color = isActive
-      ? item.deltaHa >= 0
-        ? mixColor("#f1d065", "#6fac56", intensity)
-        : mixColor("#a6be5a", "#2f7f46", intensity)
-      : "#e3ebd4";
+      ? pickBinnedColor(item.deltaHa, minDelta, maxDelta)
+      : MAP_COLOR_MID;
 
     const bubble = document.createElement("div");
     bubble.className = "bubble";
@@ -893,6 +828,67 @@ function renderImpactBubbles(results, deltas) {
       ? `Impacto relativo en ${selectedDepartment}`
       : "Impacto relativo nacional";
   }
+}
+
+function refreshMapViews() {
+  const dept = deptMapState.lastRender;
+  if (dept) {
+    renderChoropleth(
+      deptMapState,
+      dept.geo,
+      dept.nameProp,
+      dept.valuesByName,
+      dept.options,
+    );
+  }
+  const prov = provMapState.lastRender;
+  if (prov) {
+    renderChoropleth(
+      provMapState,
+      prov.geo,
+      prov.nameProp,
+      prov.valuesByName,
+      prov.options,
+    );
+  }
+}
+
+function updateFullscreenButtons() {
+  fullscreenButtons.forEach((button) => {
+    const panel = button.closest(".map-panel");
+    const isActive = panel && panel === fullscreenPanel;
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    button.setAttribute(
+      "aria-label",
+      isActive ? "Cerrar pantalla completa" : "Ver mapa en pantalla completa",
+    );
+  });
+}
+
+function closeFullscreenPanel() {
+  if (!fullscreenPanel) {
+    return;
+  }
+  fullscreenPanel.classList.remove("is-fullscreen");
+  fullscreenPanel = null;
+  document.body.classList.remove("map-fullscreen-open");
+  updateFullscreenButtons();
+  requestAnimationFrame(() => {
+    refreshMapViews();
+  });
+}
+
+function openFullscreenPanel(panel) {
+  if (fullscreenPanel) {
+    fullscreenPanel.classList.remove("is-fullscreen");
+  }
+  fullscreenPanel = panel;
+  document.body.classList.add("map-fullscreen-open");
+  panel.classList.add("is-fullscreen");
+  updateFullscreenButtons();
+  requestAnimationFrame(() => {
+    refreshMapViews();
+  });
 }
 
 async function updateMarginal(deltas) {
@@ -1045,35 +1041,34 @@ if (sidebarOverlay) {
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeSidebar();
+    closeFullscreenPanel();
   }
 });
 
-window.addEventListener("resize", () => {
-  const dept = deptMapState.lastRender;
-  if (dept) {
-    renderChoropleth(
-      deptMapState,
-      dept.geo,
-      dept.nameProp,
-      dept.valuesByName,
-      dept.options,
-    );
-  }
-  const prov = provMapState.lastRender;
-  if (prov) {
-    renderChoropleth(
-      provMapState,
-      prov.geo,
-      prov.nameProp,
-      prov.valuesByName,
-      prov.options,
-    );
-  }
+fullscreenButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const panel = button.closest(".map-panel");
+    if (!panel) {
+      return;
+    }
+    if (panel === fullscreenPanel) {
+      closeFullscreenPanel();
+    } else {
+      openFullscreenPanel(panel);
+    }
+  });
 });
+
+if (fullscreenOverlay) {
+  fullscreenOverlay.addEventListener("click", closeFullscreenPanel);
+}
+
+window.addEventListener("resize", refreshMapViews);
 
 async function init() {
   initControlUI();
   syncScenarioMeta();
+  updateFullscreenButtons();
   await refreshScenario();
 }
 

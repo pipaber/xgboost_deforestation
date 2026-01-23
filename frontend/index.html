@@ -5,6 +5,10 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>What If Peru? - Deforestation Studio</title>
         <link rel="stylesheet" href="styles.css" />
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+        />
         <!-- D3.js from CDN -->
         <script src="https://d3js.org/d3.v7.min.js"></script>
     </head>
@@ -364,6 +368,17 @@
                                 <span class="metric-note"
                                     >BAU = escenario sin cambios</span
                                 >
+                                <button
+                                    class="map-expand"
+                                    type="button"
+                                    data-map-toggle="dept-map"
+                                    aria-label="Ver mapa en pantalla completa"
+                                >
+                                    <i
+                                        class="fa-solid fa-maximize"
+                                        aria-hidden="true"
+                                    ></i>
+                                </button>
                             </div>
                         </div>
                         <div class="map-container" id="dept-map">
@@ -391,6 +406,17 @@
                                 <span class="metric-value" id="selected-dept"
                                     >--</span
                                 >
+                                <button
+                                    class="map-expand"
+                                    type="button"
+                                    data-map-toggle="prov-map"
+                                    aria-label="Ver mapa en pantalla completa"
+                                >
+                                    <i
+                                        class="fa-solid fa-maximize"
+                                        aria-hidden="true"
+                                    ></i>
+                                </button>
                             </div>
                         </div>
                         <div class="map-container" id="prov-map">
@@ -420,7 +446,12 @@
             </main>
         </div>
 
+        <div
+            class="map-fullscreen-overlay"
+            id="map-fullscreen-overlay"
+            aria-hidden="true"
+        ></div>
         <div class="map-tooltip" id="map-tooltip"></div>
-        <script src="app.js"></script>
+        <script src="app.js?v=palette-1"></script>
     </body>
 </html>

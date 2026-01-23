@@ -70,8 +70,8 @@ body.sidebar-open .sidebar-overlay {
     border-top: none;
     border-bottom: none;
     box-shadow: none;
-    padding: 24px 22px 30px;
-    overflow-y: auto;
+    padding: clamp(12px, 1.8vh, 18px);
+    overflow: hidden;
     background:
         linear-gradient(
             180deg,
@@ -79,10 +79,14 @@ body.sidebar-open .sidebar-overlay {
             rgba(214, 224, 195, 0.92)
         ),
         radial-gradient(circle at top, rgba(181, 194, 91, 0.2), transparent 55%);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.6vh, 16px);
+    height: 100%;
 }
 
 .brand {
-    margin-bottom: 22px;
+    margin-bottom: 6px;
 }
 
 .brand-tag {
@@ -96,36 +100,36 @@ body.sidebar-open .sidebar-overlay {
 
 .brand h1 {
     font-family: "Fraunces", serif;
-    font-size: 2rem;
+    font-size: clamp(1.4rem, 2.5vh, 1.8rem);
     margin: 0;
 }
 
 .brand p {
     margin: 6px 0 0;
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.82rem;
 }
 
 .scenario h2,
 .controls h2 {
-    font-size: 1rem;
+    font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     color: var(--accent-ink);
 }
 
 .subtitle {
-    margin: 0 0 18px;
+    margin: 0 0 10px;
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 
 .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
 }
 
 .field label {
@@ -135,14 +139,14 @@ body.sidebar-open .sidebar-overlay {
 
 .hint {
     color: var(--muted);
-    font-size: 0.75rem;
-    margin: 0 0 12px;
+    font-size: 0.72rem;
+    margin: 0 0 8px;
 }
 
 select,
 input[type="number"] {
     width: 100%;
-    padding: 9px 10px;
+    padding: 8px 10px;
     border-radius: 10px;
     border: 1px solid var(--border);
     background: #fff;
@@ -157,7 +161,7 @@ input[type="number"]:focus {
 }
 
 .control-group {
-    margin-bottom: 20px;
+    margin-bottom: 14px;
 }
 
 .control-group.is-disabled {
@@ -169,7 +173,7 @@ input[type="number"]:focus {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .control-label {
@@ -189,12 +193,12 @@ input[type="number"]:focus {
 .control-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .step-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 10px;
     border: 1px solid var(--border);
     background: #fff;
@@ -219,7 +223,7 @@ input[type="number"]:focus {
 
 .control-input {
     width: 100%;
-    padding: 9px 40px 9px 12px;
+    padding: 8px 36px 8px 10px;
     border-radius: 12px;
     border: 1px solid var(--border);
     background: #fff;
@@ -235,15 +239,15 @@ input[type="number"]:focus {
 
 .input-unit {
     position: absolute;
-    right: 12px;
+    right: 10px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
 .reset-container {
-    margin-top: 18px;
+    margin-top: 12px;
     text-align: center;
 }
 
@@ -268,19 +272,21 @@ input[type="number"]:focus {
 }
 
 .debug-info {
-    margin-top: 24px;
-    padding-top: 18px;
+    margin-top: auto;
+    padding-top: 12px;
     border-top: 1px dashed var(--border);
     color: var(--muted);
     font-size: 0.7rem;
 }
 
 .stage {
-    padding: 26px 30px 30px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    overflow-y: auto;
+    padding: clamp(12px, 2vh, 18px) clamp(14px, 2.4vh, 22px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: clamp(12px, 1.6vh, 18px);
+    overflow: hidden;
+    height: 100%;
+    min-height: 0;
 }
 
 .sidebar-toggle {
@@ -305,14 +311,14 @@ input[type="number"]:focus {
 
 .stage-header h2 {
     font-family: "Fraunces", serif;
-    font-size: 1.6rem;
+    font-size: clamp(1.2rem, 2.3vh, 1.6rem);
     margin: 0 0 6px;
 }
 
 .stage-header p {
     margin: 0;
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     max-width: 520px;
 }
 
@@ -327,14 +333,17 @@ input[type="number"]:focus {
 .map-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
-    gap: 20px;
+    gap: clamp(12px, 1.8vh, 20px);
+    min-height: 0;
+    height: 100%;
 }
 
 .map-panel {
-    padding: 18px;
+    padding: clamp(12px, 1.8vh, 18px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+    min-height: 0;
 }
 
 .panel-header {
@@ -346,7 +355,7 @@ input[type="number"]:focus {
 
 .panel-header h3 {
     margin: 0 0 4px;
-    font-size: 1.05rem;
+    font-size: 1rem;
 }
 
 .panel-subtitle {
@@ -357,6 +366,32 @@ input[type="number"]:focus {
 
 .panel-metric {
     text-align: right;
+}
+
+.map-expand {
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--accent-ink);
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.map-expand:hover {
+    background: var(--panel-strong);
+}
+
+.map-expand[aria-pressed="true"] {
+    background: var(--accent);
+    color: #fff;
+    border-color: transparent;
 }
 
 .metric-label {
@@ -397,12 +432,44 @@ input[type="number"]:focus {
 
 .map-container {
     position: relative;
-    width: 100%;
-    height: 420px;
+    width: 96%;
+    height: clamp(300px, 44vh, 560px);
+    margin: 0 auto;
     background: #e6edd6;
     border-radius: 16px;
     border: 1px solid var(--border);
     overflow: hidden;
+}
+
+.map-fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(25, 28, 22, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 40;
+}
+
+body.map-fullscreen-open .map-fullscreen-overlay {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.map-panel.is-fullscreen {
+    position: fixed;
+    inset: 16px;
+    z-index: 50;
+    width: auto;
+    height: auto;
+    margin: 0;
+}
+
+.map-panel.is-fullscreen .map-container {
+    width: 100%;
+    margin: 0;
+    height: auto;
+    flex: 1;
 }
 
 .map-container svg {
@@ -440,6 +507,11 @@ input[type="number"]:focus {
     margin-top: 4px;
 }
 
+.map-legend .legend-labels--bins span {
+    flex: 1;
+    text-align: center;
+}
+
 .map-tooltip {
     position: fixed;
     pointer-events: none;
@@ -451,19 +523,19 @@ input[type="number"]:focus {
     border-radius: 8px;
     opacity: 0;
     transition: opacity 0.12s ease;
-    z-index: 30;
+    z-index: 60;
     box-shadow: 0 10px 20px rgba(39, 27, 17, 0.15);
 }
 
 .impact-panel {
-    padding: 18px;
+    padding: clamp(8px, 1.2vh, 14px);
 }
 
 .bubble-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 16px;
-    margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 8px;
+    margin-top: 6px;
 }
 
 .bubble {
@@ -475,8 +547,8 @@ input[type="number"]:focus {
 }
 
 .bubble-circle {
-    width: var(--size, 54px);
-    height: var(--size, 54px);
+    width: var(--size, 44px);
+    height: var(--size, 44px);
     background: var(--color, #e3ebd4);
     border-radius: 50%;
     box-shadow:
@@ -492,18 +564,18 @@ input[type="number"]:focus {
 }
 
 .bubble-label {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     font-weight: 600;
 }
 
 .bubble-meta {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     color: var(--muted);
 }
 
 .impact-note {
-    margin: 10px 0 0;
-    font-size: 0.8rem;
+    margin: 8px 0 0;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
@@ -547,6 +619,7 @@ input[type="number"]:focus {
         z-index: 20;
         height: 100vh;
         border-right: 1px solid var(--border);
+        overflow-y: auto;
     }
 
     body.sidebar-open .controls-panel {
@@ -555,6 +628,10 @@ input[type="number"]:focus {
 
     .stage {
         padding: 20px;
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
     }
 
     .sidebar-toggle {
@@ -563,9 +640,22 @@ input[type="number"]:focus {
 
     .map-grid {
         grid-template-columns: 1fr;
+        height: auto;
+        min-height: auto;
     }
 
     .map-container {
-        height: 320px;
+        height: 360px;
+    }
+}
+
+@media (max-height: 760px) {
+    .controls-panel,
+    .stage {
+        overflow-y: auto;
+    }
+
+    .map-container {
+        height: clamp(230px, 32vh, 320px);
     }
 }
